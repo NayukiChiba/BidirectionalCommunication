@@ -1,0 +1,59 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    # 跳过 draft PR
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install httpx
+
+      - name: Get PR diff
+        id: diff
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr diff ${{ github.event.pull_request.number }} > pr_diff.txt
+          echo "diff_file=pr_diff.txt" >> $GITHUB_OUTPUT
+
+      - name: AI Code Review
+        env:
+          # 在 repo settings -> secrets 中配置你的 API key
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}  # 可选，如果用 OpenAI 兼容 API
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}        # 可选，默认 gpt-4o
+          LLM_API_TYPE: ${{ secrets.LLM_API_TYPE }}  # chat, messages, response
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          python .github/scripts/ai_review.py
+
+      - name: Post Review Comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f review_result.md ]; then
+            gh pr review ${{ github.event.pull_request.number }} \
+              --comment \
+              --body-file review_result.md
+          fi

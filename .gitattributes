@@ -1,0 +1,30 @@
+# 默认使用 LF 换行
+* text=auto
+
+# Python 文件强制 LF
+*.py text eol=lf
+
+# Shell 脚本强制 LF
+*.sh text eol=lf
+
+# 配置文件
+*.toml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.cfg text eol=lf
+*.ini text eol=lf
+
+# 文档
+*.md text eol=lf
+
+# 二进制文件不转换
+*.pth binary
+*.pt binary
+*.pkl binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.zip binary
+*.tar.gz binary

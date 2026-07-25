@@ -1,0 +1,85 @@
+# --------------- Ruff 配置 ---------------
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501", "F841"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+
+# --------------- UV 镜像源配置 ---------------
+# 用法：uv add torch --index pytorch-cu128-aliyun
+[[tool.uv.index]]
+name = "tsinghua"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
+# pytorch-cu128 镜像源配置（示例，实际使用时请根据需要选择和配置）
+# 使用方法: uv add torch --index https://mirrors.aliyun.com/pytorch-wheels/cu128/
+[[tool.uv.index]]
+name = "pytorch-cu128-cn"
+url = "https://mirrors.aliyun.com/pytorch-wheels/cu128/"
+explicit = true # 仅当指定索引时才使用，避免干扰其他包的安装
+
+# 使用方法: uv add torch --index https://download.pytorch.org/whl/cu128
+[[tool.uv.index]]
+name = "pytorch-cu128-original"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true # 仅当指定索引时才使用，避免干扰其他包的安装
+
+# 镜像源不好用，尽量使用官方源，或者根据需要选择其他可靠的镜像源
+[tool.uv.sources]
+torch = { index = "pytorch-cu128-original" }
+torchvision = { index = "pytorch-cu128-original" }
+torchaudio = { index = "pytorch-cu128-original" }
+
+# --------------- 项目信息配置 ---------------
+[project]
+name = "templates" # 这里需要设置为你的项目名称，通常与包名相同
+version = "0.1.0"
+description = "项目模板" # 这里需要设置为你的项目描述，简要说明项目的功能和用途
+requires-python = ">=3.11"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "NayukiMeko" },
+]
+keywords = [] # 这里可以添加一些关键词，帮助用户搜索到你的项目 
+
+# 运行时依赖（留空，按项目需要添加）
+dependencies = []
+
+# 可选依赖组（兼容 pip install ".[dev]" 方式安装）
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.3",
+    "ruff>=0.15.12",
+    "pre-commit>=4.6.0",
+]
+
+# PEP 735 依赖组（uv add --dev 写入此处，uv sync 自动安装）
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "ruff>=0.15.12",
+    "pre-commit>=4.6.0",
+    "ipykernel>=7.2.0",
+    "nbstripout>=0.9.1",
+]
+
+# uv 配置项（如有需要，可以在此添加 uv 相关的配置）一般不需要修改，除非有特殊需求
+[tool.uv]
+
+# Python 下载源（uv python install 时使用）
+python-preference = "managed"
+# 约束文件，用于限制特定包的版本上限（如避免破坏性更新）
+# constraint-dependencies = []
+
+# 开发工具（uv add --dev 旧版格式，建议用 dependency-groups 替代）
+# dev-dependencies = []
