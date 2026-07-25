@@ -35,8 +35,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     try:
         while True:
             # 等待 websocket 接受文本
-            message = websocket.receive_text()
+            message = (
+                await websocket.receive_text()
+            )  # 这里一定要 await, 因为要等待接受 receive_text, 是一个异步
             # 向 websocket 发送文本
+            message = f"我收到了内容, 内容是{message}"
             await websocket.send_text(message)
     except WebSocketDisconnect:
         # 客户端断开, 结束当前的连接
