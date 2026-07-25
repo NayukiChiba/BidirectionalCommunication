@@ -39,8 +39,10 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 await websocket.receive_text()
             )  # 这里一定要 await, 因为要等待接受 receive_text, 是一个异步
             # 向 websocket 发送文本
-            message = f"我收到了内容, 内容是{message}"
-            await websocket.send_text(message)
-    except WebSocketDisconnect:
+            response = f"我收到了内容, 内容是{message}"
+            await websocket.send_text(response)
+    except WebSocketDisconnect as disconnectError:
         # 客户端断开, 结束当前的连接
-        return
+        print(f"WebSocket 客户端已断开, 关闭码: {disconnectError.code}")
+    finally:
+        pass
