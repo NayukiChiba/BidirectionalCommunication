@@ -375,3 +375,6 @@ debug/
 release/
 
 uv.lock
+/artifacts/
+/issues/
+/ROADMAP.md
