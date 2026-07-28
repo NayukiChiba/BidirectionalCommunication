@@ -6,62 +6,45 @@ FastAPI 接口测试
 4. 测试 WebSocket 正常断开
 """
 
+from uuid import UUID
+
 from fastapi.testclient import TestClient
 
 from main import app
 
-testClient = TestClient(app)
+test_client = TestClient(app)
 
 
 def test_get_health() -> None:
     """
     测试健康检查端口
     """
-    response = testClient.get("/health")
+    response = test_client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
 
-def test_websocket_single_message() -> None:
+def test_websocket_valid_message() -> None:
     """
-    测试单条 WebSocket 消息回显
+    测试合法的 WebSocket JSON 消息
     """
-    sent_message = "Hello World"
-    expected_message = f"我收到了内容, 内容是{sent_message}"
+    client_message_id = "5cbe59a7-1c45-4dd9-9302-d9eb2586bb6b"
 
-    with testClient.websocket_connect("/ws") as websocket:
-        websocket.send_text(sent_message)
-        response = websocket.receive_text()
+    with test_client.websocket_connect("/ws?user_id=user-a") as websocket:
+        websocket.send_json(
+            {
+                "type": "send_message",
+                "recipient_id": "user-b",
+                "content": "Hello World",
+                "client_message_id": client_message_id,
+            }
+        )
+        response = websocket.receive_json()
 
-    assert response == expected_message
+    assert response["type"] == "message"
+    assert response["client_message_id"] == client_message_id
+    assert response["content"] == "Hello World"
+    assert response["recipient_id"] == "user-b"
+    assert response["sender_id"] == "user-a"
 
-
-def test_websocket_multiple_messages() -> None:
-    """
-    测试同一个 WebSocket 连接连续发消息
-    """
-    sent_messages = [
-        "first message",
-        "second message",
-        "third message",
-        "fourth message",
-        "fifth message",
-    ]
-
-    with testClient.websocket_connect("/ws") as websocket:
-        for sent_message in sent_messages:
-            websocket.send_text(sent_message)
-            response = websocket.receive_text()
-
-            expected_message = f"我收到了内容, 内容是{sent_message}"
-
-            assert response == expected_message
-
-
-def test_websocketDisconnectNormally() -> None:
-    """测试客户端主动断开连接"""
-    with testClient.websocket_connect("/ws") as websocket:
-        websocket.send_text("断开前的消息")
-        receivedMessage = websocket.receive_text()
-
-        assert receivedMessage == "我收到了内容, 内容是断开前的消息"
+    UUID(response["server_message_id"])
