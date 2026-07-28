@@ -7,12 +7,12 @@ FastAPI 应用入口
 
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 app = FastAPI()
 
@@ -55,7 +55,7 @@ class SendMessageCommand(BaseModel):
             raise ValueError("接收者的 ID 不能为空")
         return normalized_recipient_id
 
-    @field_validator("client_message_id")
+    @field_validator("content")
     @classmethod
     def validate_content(cls, content: str) -> str:
         """
@@ -127,11 +127,12 @@ async def get_health():
 
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket) -> None:
+async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
     """
     接受客户端的文本并且原样返回
     Args:
         websocket(WebSocket): websocket连接
+        user_id(str): 用户的 id, 就是 sender_id 发送方
     Returns:
         None
     """
@@ -141,12 +142,41 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     try:
         while True:
             # 等待 websocket 接受文本
-            message = (
+            raw_message = (
                 await websocket.receive_text()
             )  # 这里一定要 await, 因为要等待接受 receive_text, 是一个异步
-            # 向 websocket 发送文本
-            response = f"我收到了内容, 内容是{message}"
-            await websocket.send_text(response)
+            # 先验证一下 raw_message 是不是合法的
+            try:
+                send_message_command = SendMessageCommand.model_validate_json(
+                    raw_message
+                )
+            except ValidationError as validation_error:
+                first_error = validation_error.errors()[
+                    0
+                ]  # 这是一个List[Dict]类型的错误
+                error_type = first_error["type"]
+
+                if error_type == "json_invalid":
+                    error_code = "invalid_json"
+                    error_message = "消息不是合法json类型"
+                else:
+                    error_code = "invalid_message"
+                    error_message = "消息字段验证失败"
+                error_event = ErrorEvent(code=error_code, message=error_message)
+
+                await websocket.send_json(error_event.model_dump(mode="json"))
+                continue
+            message_event = MessageEvent(
+                server_message_id=uuid4(),
+                client_message_id=send_message_command.client_message_id,
+                sender_id=user_id,
+                recipient_id=send_message_command.recipient_id,
+                content=send_message_command.content,
+                sent_at=datetime.now(timezone.utc),
+            )
+
+            await websocket.send_json(message_event.model_dump(mode="json"))
+
     except WebSocketDisconnect as disconnectError:
         # 客户端断开, 结束当前的连接
         print(f"WebSocket 客户端已断开, 关闭码: {disconnectError.code}")
