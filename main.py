@@ -102,6 +102,22 @@ class MessageEvent(BaseModel):
     sent_at: datetime
 
 
+class ErrorEvent(BaseModel):
+    """
+    服务端错误事件
+    Attributes:
+        type(Literal["error"]): 错误事件类型
+        code(str): 错误码
+        message(str): 错误对应的消息
+        client_message_id(UUID | None): 客户端消息 id
+    """
+
+    type: Literal["error"] = "error"
+    code: str
+    message: str
+    clientMessageId: UUID | None = None
+
+
 @app.get("/health")
 async def get_health():
     """
