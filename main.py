@@ -118,6 +118,77 @@ class ErrorEvent(BaseModel):
     clientMessageId: UUID | None = None
 
 
+class ConnectionManager:
+    """
+    单进程 WebSocket 在线连接管理器
+
+    职责：
+    1. 保存用户 ID 与 WebSocket 的对应关系
+    2. 管理用户上线和下线
+    3. 判断用户是否在线
+    4. 向指定在线用户发送 JSON 数据
+
+    注意：
+        该对象只管理当前进程中的技术连接，不负责创建消息、
+        验证协议、保存聊天记录或处理用户认证。
+    """
+
+    def __init__(self) -> None:
+        """初始化在线连接表"""
+        # TODO(Issue 05-1):
+        # 使用实例变量保存用户 ID 与 WebSocket 的对应关系。
+        # 键是用户 ID，值是该用户当前有效的 WebSocket。
+        self._connections: dict[str, WebSocket] = {}
+
+    async def connect(self, user_id: str, websocket: WebSocket) -> None:
+        """
+        接受 WebSocket 连接并将用户标记为在线
+
+        TODO(Issue 05-2):
+        1. 检查 user_id 是否为空。
+        2. 等待 websocket.accept() 完成握手。
+        3. 将 user_id 和 websocket 保存到连接表。
+        """
+        raise NotImplementedError("请完成用户上线逻辑")
+
+    def disconnect(self, user_id: str, websocket: WebSocket) -> bool:
+        """
+        删除用户的指定 WebSocket 连接
+
+        TODO(Issue 05-3):
+        1. 根据 user_id 读取当前连接。
+        2. 使用 is 判断当前连接是否就是传入的 websocket。
+        3. 只有连接相同时才删除并返回 True。
+        4. 用户不存在或连接不相同时返回 False。
+        """
+        raise NotImplementedError("请完成用户下线逻辑")
+
+    def is_online(self, user_id: str) -> bool:
+        """
+        判断用户是否在线
+
+        TODO(Issue 05-4):
+        检查 user_id 是否存在于连接表中，并返回布尔值。
+        """
+        raise NotImplementedError("请完成在线状态判断")
+
+    async def send_to_user(
+        self,
+        user_id: str,
+        data: dict[str, object],
+    ) -> bool:
+        """
+        向指定在线用户发送 JSON 数据
+
+        TODO(Issue 05-5):
+        1. 根据 user_id 查找 WebSocket。
+        2. 用户离线时返回 False。
+        3. 用户在线时等待 send_json(data)。
+        4. 发送完成后返回 True。
+        """
+        raise NotImplementedError("请完成定向发送逻辑")
+
+
 @app.get("/health")
 async def get_health():
     """
@@ -136,6 +207,9 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
     Returns:
         None
     """
+    # TODO(Issue 05-6):
+    # 在 ConnectionManager 的单元测试通过后，创建应用级管理器实例，
+    # 并使用 manager.connect(user_id, websocket) 替换下面的直接 accept。
     # 接受 WebSocket 握手
     await websocket.accept()
 
@@ -164,6 +238,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
                     error_message = "消息字段验证失败"
                 error_event = ErrorEvent(code=error_code, message=error_message)
 
+                # TODO(Issue 05-7):
+                # 接入管理器后，通过 send_to_user 向当前用户发送错误事件。
                 await websocket.send_json(error_event.model_dump(mode="json"))
                 continue
             message_event = MessageEvent(
@@ -175,10 +251,16 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
                 sent_at=datetime.now(timezone.utc),
             )
 
+            # TODO(Issue 05-8):
+            # 本 Issue 先通过 send_to_user 向当前用户返回消息事件。
+            # 向 recipient_id 真正路由消息属于 Issue 06。
             await websocket.send_json(message_event.model_dump(mode="json"))
 
     except WebSocketDisconnect as disconnectError:
         # 客户端断开, 结束当前的连接
         print(f"WebSocket 客户端已断开, 关闭码: {disconnectError.code}")
     finally:
+        # TODO(Issue 05-9):
+        # 接入管理器后，无论正常断开还是发生异常，都调用 disconnect。
+        # disconnect 必须只删除与当前 websocket 相同的连接。
         pass
