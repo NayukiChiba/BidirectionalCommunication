@@ -161,13 +161,22 @@ class ConnectionManager:
         """
         删除用户的指定 WebSocket 连接
 
-        TODO(Issue 05-3):
-        1. 根据 user_id 读取当前连接。
-        2. 使用 is 判断当前连接是否就是传入的 websocket。
-        3. 只有连接相同时才删除并返回 True。
-        4. 用户不存在或连接不相同时返回 False。
+        Args:
+            user_id(str): 用户的 id, 也是发送方的 id
+            websocket(WebSocket): websocket 连接
+        Returns:
+            bool: 是否成功删除连接
         """
-        raise NotImplementedError("请完成用户下线逻辑")
+        # 检查 user_id 是否在当前的连接表中
+        if user_id not in self._connections.keys():
+            return False
+        #  检查 websocket 连接是否正确
+        if self._connections[user_id] != websocket:
+            return False
+
+        # 如果 user_id 和 websocket 都存在且正确, 就把连接表中的这个内容删除掉
+        self._connections.pop(user_id)
+        return True
 
     def is_online(self, user_id: str) -> bool:
         """
