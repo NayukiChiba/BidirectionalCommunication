@@ -135,7 +135,6 @@ class ConnectionManager:
 
     def __init__(self) -> None:
         """初始化在线连接表"""
-        # TODO(Issue 05-1):
         # 使用实例变量保存用户 ID 与 WebSocket 的对应关系。
         # 键是用户 ID，值是该用户当前有效的 WebSocket。
         self._connections: dict[str, WebSocket] = {}
@@ -143,13 +142,20 @@ class ConnectionManager:
     async def connect(self, user_id: str, websocket: WebSocket) -> None:
         """
         接受 WebSocket 连接并将用户标记为在线
-
-        TODO(Issue 05-2):
-        1. 检查 user_id 是否为空。
-        2. 等待 websocket.accept() 完成握手。
-        3. 将 user_id 和 websocket 保存到连接表。
+        Args:
+            user_id(str): 用户的 id, 也就是发送方的 id
+            websocket(WebSocket): websocket 连接
         """
-        raise NotImplementedError("请完成用户上线逻辑")
+        # 检查 user_id 是否为空
+        user_id = user_id.strip()
+        if not user_id:
+            raise ValueError("user_id 不可以为空")
+
+        # websocket 握手
+        await websocket.accept()
+
+        # 保存 user_id 和 websocket 到连接表中
+        self._connections[user_id] = websocket
 
     def disconnect(self, user_id: str, websocket: WebSocket) -> bool:
         """
