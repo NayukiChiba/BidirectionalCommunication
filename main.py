@@ -168,7 +168,7 @@ class ConnectionManager:
             bool: 是否成功删除连接
         """
         # 检查 user_id 是否在当前的连接表中
-        if user_id not in self._connections.keys():
+        if not self.is_online(user_id=user_id):
             return False
         #  检查 websocket 连接是否正确
         if self._connections[user_id] != websocket:
@@ -180,12 +180,11 @@ class ConnectionManager:
 
     def is_online(self, user_id: str) -> bool:
         """
-        判断用户是否在线
-
-        TODO(Issue 05-4):
-        检查 user_id 是否存在于连接表中，并返回布尔值。
+        判断用户是否在线, 检查 user_id 是否存在于连接表中, 并返回布尔值。
+        Args:
+            user_id(str): 用户的 id
         """
-        raise NotImplementedError("请完成在线状态判断")
+        return True if user_id in self._connections.keys() else False
 
     async def send_to_user(
         self,
