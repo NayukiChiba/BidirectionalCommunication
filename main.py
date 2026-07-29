@@ -193,14 +193,19 @@ class ConnectionManager:
     ) -> bool:
         """
         向指定在线用户发送 JSON 数据
-
-        TODO(Issue 05-5):
-        1. 根据 user_id 查找 WebSocket。
-        2. 用户离线时返回 False。
-        3. 用户在线时等待 send_json(data)。
-        4. 发送完成后返回 True。
+        Args:
+            user_id(str): 用户的 id
+            data(dict[str, object]): json数据
         """
-        raise NotImplementedError("请完成定向发送逻辑")
+        # 根据 user_id 查找 WebSocket。
+        websocket = self._connections[user_id]
+        # 用户离线时返回 False。
+        if not self.is_online(user_id=user_id):
+            return False
+        # 用户在线时等待 send_json(data)
+        await websocket.send_json(data)
+        # 发送完成后返回 True
+        return True
 
 
 @app.get("/health")
