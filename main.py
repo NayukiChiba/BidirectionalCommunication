@@ -289,6 +289,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
                 await websocket.receive_text()
             )  # 这里一定要 await, 因为要等待接受 receive_text, 是一个异步
             # 先验证一下 raw_message 是不是合法的
+            client_message_id: UUID | None = None
             try:
                 send_message_command = SendMessageCommand.model_validate_json(
                     raw_message

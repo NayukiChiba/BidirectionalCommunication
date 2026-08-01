@@ -54,6 +54,7 @@ keywords = [] # 这里可以添加一些关键词，帮助用户搜索到你的�
 # 运行时依赖（留空，按项目需要添加）
 dependencies = [
     "fastapi[standard]>=0.140.0",
+    "httpx2>=2.9.1",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.2",
     "websockets>=16.1.1",
