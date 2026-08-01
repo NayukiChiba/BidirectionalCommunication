@@ -115,7 +115,7 @@ class ErrorEvent(BaseModel):
     type: Literal["error"] = "error"
     code: str
     message: str
-    clientMessageId: UUID | None = None
+    client_message_id: UUID | None = None
 
 
 class ConnectionManager:
@@ -184,7 +184,7 @@ class ConnectionManager:
         Args:
             user_id(str): 用户的 id
         """
-        return True if user_id in self._connections.keys() else False
+        return True if user_id in self._connections else False
 
     async def send_to_user(
         self,

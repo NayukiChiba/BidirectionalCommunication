@@ -75,6 +75,7 @@ dev = [
     "pre-commit>=4.6.0",
     "ipykernel>=7.2.0",
     "nbstripout>=0.9.1",
+    "pytest-asyncio>=1.4.0",
 ]
 
 # uv 配置项（如有需要，可以在此添加 uv 相关的配置）一般不需要修改，除非有特殊需求
