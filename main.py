@@ -216,6 +216,10 @@ async def get_health():
     return {"status": "ok"}
 
 
+# 将局部 ConnectionManager 提升为模块级单例，使不同连接的用户可以互相发现和通信。
+manager = ConnectionManager()
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
     """
@@ -227,7 +231,6 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
         None
     """
     # 接受 WebSocket 握手
-    manager = ConnectionManager()
     await manager.connect(user_id=user_id, websocket=websocket)
 
     try:
@@ -241,6 +244,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
                 send_message_command = SendMessageCommand.model_validate_json(
                     raw_message
                 )
+                client_message_id = send_message_command.client_message_id
             except ValidationError as validation_error:
                 first_error = validation_error.errors()[
                     0
@@ -250,15 +254,36 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
                 if error_type == "json_invalid":
                     error_code = "invalid_json"
                     error_message = "消息不是合法json类型"
+                elif error_type == "recipient_offline":
+                    error_code = "recipient_offline"
+                    error_message = "接收方是离线状态"
                 else:
                     error_code = "invalid_message"
                     error_message = "消息字段验证失败"
-                error_event = ErrorEvent(code=error_code, message=error_message)
 
-                # TODO(Issue 05-7):
-                # 接入管理器后，通过 send_to_user 向当前用户发送错误事件。
-                await websocket.send_json(error_event.model_dump(mode="json"))
+                error_event = ErrorEvent(
+                    code=error_code,
+                    message=error_message,
+                    client_message_id=client_message_id,
+                )
+
+                # 通过 manager.send_to_user 向当前用户发送错误事件，
+                await manager.send_to_user(
+                    user_id=user_id, data=error_event.model_dump(mode="json")
+                )
                 continue
+            # 若 recipient_id == user_id，按既定规则处理，不能靠巧合。
+            if not manager.is_online(user_id=send_message_command.recipient_id):
+                offline_error = ErrorEvent(
+                    code="recipient_offline",
+                    message=f"用户{send_message_command.recipient_id} 不在线",
+                    client_message_id=send_message_command.client_message_id,
+                )
+                await manager.send_to_user(
+                    user_id=user_id, data=offline_error.model_dump(mode="json")
+                )
+                continue
+
             message_event = MessageEvent(
                 server_message_id=uuid4(),
                 client_message_id=send_message_command.client_message_id,
@@ -268,9 +293,28 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
                 sent_at=datetime.now(timezone.utc),
             )
 
-            await manager.send_to_user(
-                user_id=user_id, data=message_event.model_dump(mode="json")
-            )
+            # TODO(Issue 06-5): 将 message_event 推送给 recipient_id。
+            # 发送成功后给 sender 返回 ack 确认。
+            if not await manager.send_to_user(
+                user_id=send_message_command.recipient_id,
+                data=message_event.model_dump(mode="json"),
+            ):
+                offline_error = ErrorEvent(
+                    code="recipient_offline",
+                    message=f"用户 {send_message_command.recipient_id} 当前离线",
+                    client_message_id=send_message_command.client_message_id,
+                )
+                await manager.send_to_user(
+                    user_id=user_id, data=offline_error.model_dump(mode="json")
+                )
+                continue
+
+            ack = {
+                "type": "ack",
+                "client_message_id": str(send_message_command.client_message_id),
+                "server_message_id": str(message_event.server_message_id),
+            }
+            await manager.send_to_user(user_id=user_id, data=ack)
 
     except WebSocketDisconnect:
         # 客户端断开, 结束当前的连接
