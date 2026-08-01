@@ -49,3 +49,21 @@ def test_websocket_unknown_message_type() -> None:
 
     assert response["type"] == "error"
     assert response["code"] == "invalid_message"
+
+
+def test_websocket_rejects_forged_sender_id() -> None:
+    """测试客户端不能通过载荷伪造发送者 ID"""
+    with test_client.websocket_connect("/ws?user_id=user-a") as websocket:
+        websocket.send_json(
+            {
+                "type": "send_message",
+                "sender_id": "user-c",
+                "recipient_id": "user-b",
+                "content": "伪造发送者",
+                "client_message_id": "ff3596a2-cf49-45b5-9502-f68b11a0f04b",
+            }
+        )
+        response = websocket.receive_json()
+
+    assert response["type"] == "error"
+    assert response["code"] == "invalid_message"

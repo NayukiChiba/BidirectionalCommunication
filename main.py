@@ -247,13 +247,18 @@ class ConnectionManager:
         if sender_id is None:
             raise TypeError("缺少必需参数：sender_id")
 
-        # 用户离线时返回 False
-        if not self.is_online(user_id=sender_id):
+        # 获取当前连接，避免在线检查与读取连接使用两次查询。
+        websocket = self._connections.get(sender_id)
+        if websocket is None:
             return False
-        # 根据 user_id 查找 WebSocket
-        websocket = self._connections[sender_id]
-        # 用户在线时等待 send_json(data)
-        await websocket.send_json(data)
+
+        try:
+            await websocket.send_json(data)
+        except (WebSocketDisconnect, RuntimeError, OSError):
+            # 发送期间连接失效时，仅清理本次取得的连接。
+            self.disconnect(user_id=sender_id, websocket=websocket)
+            return False
+
         return True
 
 
@@ -322,11 +327,14 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
                     sender_id=user_id, data=error_event.model_dump(mode="json")
                 )
                 continue
-            # 若 recipient_id == user_id，按既定规则处理，不能靠巧合。
-            if not manager.is_online(user_id=send_message_command.recipient_id):
+            # 自发消息规则：允许发送，并将当前连接作为目标连接。
+            recipient_id = send_message_command.recipient_id
+            target_user_id = user_id if recipient_id == user_id else recipient_id
+
+            if not manager.is_online(user_id=target_user_id):
                 offline_error = ErrorEvent(
                     code="recipient_offline",
-                    message=f"用户{send_message_command.recipient_id} 不在线",
+                    message=f"用户 {target_user_id} 不在线",
                     client_message_id=send_message_command.client_message_id,
                 )
                 await manager.send_message_to_user(
@@ -338,19 +346,19 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
                 server_message_id=uuid4(),
                 client_message_id=send_message_command.client_message_id,
                 sender_id=user_id,
-                recipient_id=send_message_command.recipient_id,
+                recipient_id=target_user_id,
                 content=send_message_command.content,
                 sent_at=datetime.now(timezone.utc),
             )
 
             # 发送成功后给 sender 返回 ack 确认。
             if not await manager.send_message_to_user(
-                sender_id=send_message_command.recipient_id,
+                sender_id=target_user_id,
                 data=message_event.model_dump(mode="json"),
             ):
                 offline_error = ErrorEvent(
                     code="recipient_offline",
-                    message=f"用户 {send_message_command.recipient_id} 当前离线",
+                    message=f"用户 {target_user_id} 当前离线",
                     client_message_id=send_message_command.client_message_id,
                 )
                 await manager.send_message_to_user(

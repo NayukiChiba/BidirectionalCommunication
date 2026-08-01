@@ -165,6 +165,24 @@ class TestConnectionManager:
         assert result is False
 
     @pytest.mark.asyncio
+    async def test_send_failure_removes_stale_connection(
+        self,
+        manager: ConnectionManager,
+        mock_websocket: MagicMock,
+    ) -> None:
+        """测试发送期间连接失效时清理失效连接"""
+        mock_websocket.send_json.side_effect = RuntimeError("连接已关闭")
+        await manager.connect(user_id="user-a", websocket=mock_websocket)
+
+        result = await manager.send_message_to_user(
+            sender_id="user-a",
+            data={"type": "message"},
+        )
+
+        assert result is False
+        assert manager.is_online("user-a") is False
+
+    @pytest.mark.asyncio
     async def test_send_message_to_user_accepts_legacy_user_id(
         self,
         manager: ConnectionManager,

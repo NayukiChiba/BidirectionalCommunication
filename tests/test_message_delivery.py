@@ -11,7 +11,7 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 
-from main import app
+from main import app, manager
 
 test_client = TestClient(app)
 
@@ -43,3 +43,55 @@ def test_deliver_message_and_acknowledge_sender() -> None:
     assert ack_event["type"] == "ack"
     assert ack_event["client_message_id"] == client_message_id
     assert ack_event["server_message_id"] == message_event["server_message_id"]
+
+
+def test_send_message_to_offline_recipient() -> None:
+    """测试向离线用户发送时发送方收到稳定错误"""
+    client_message_id = "dd57b26c-5233-45d1-bf24-5bdc2f0fc68f"
+
+    with test_client.websocket_connect("/ws?user_id=user-a") as sender_websocket:
+        sender_websocket.send_json(
+            {
+                "type": "send_message",
+                "recipient_id": "offline-user",
+                "content": "Hello",
+                "client_message_id": client_message_id,
+            }
+        )
+        error_event = sender_websocket.receive_json()
+
+    assert error_event["type"] == "error"
+    assert error_event["code"] == "recipient_offline"
+    assert error_event["client_message_id"] == client_message_id
+
+
+def test_allow_self_message() -> None:
+    """测试明确允许用户向自己发送消息"""
+    client_message_id = "819145f5-5ddb-4ae1-a382-f81fb81e6f08"
+
+    with test_client.websocket_connect("/ws?user_id=user-a") as websocket:
+        websocket.send_json(
+            {
+                "type": "send_message",
+                "recipient_id": "user-a",
+                "content": "写给自己",
+                "client_message_id": client_message_id,
+            }
+        )
+        message_event = websocket.receive_json()
+        ack_event = websocket.receive_json()
+
+    assert message_event["type"] == "message"
+    assert message_event["sender_id"] == "user-a"
+    assert message_event["recipient_id"] == "user-a"
+    assert message_event["client_message_id"] == client_message_id
+    assert ack_event["type"] == "ack"
+    assert ack_event["server_message_id"] == message_event["server_message_id"]
+
+
+def test_disconnect_cleans_endpoint_connection() -> None:
+    """测试 WebSocket 退出后清理端点绑定的连接"""
+    with test_client.websocket_connect("/ws?user_id=user-a"):
+        assert manager.is_online("user-a") is True
+
+    assert manager.is_online("user-a") is False
