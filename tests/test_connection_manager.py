@@ -46,7 +46,7 @@ class TestConnectionManager:
         assert manager.is_online("user-a") is True
 
     @pytest.mark.asyncio
-    async def test_connect_calls_accpet(
+    async def test_connect_calls_accept(
         self, manager: ConnectionManager, mock_websocket: MagicMock
     ) -> None:
         """
@@ -75,7 +75,7 @@ class TestConnectionManager:
 
     # ===== disconnect =====
     @pytest.mark.asyncio
-    async def test_disconnet_removes_user(
+    async def test_disconnect_removes_user(
         self,
         manager: ConnectionManager,
         mock_websocket: MagicMock,
@@ -124,8 +124,7 @@ class TestConnectionManager:
         assert manager.is_online("user-a") is True
 
     # ===== is_online =====
-    @pytest.mark.asyncio
-    async def test_is_online_for_unknown_user(self, manager: ConnectionManager) -> None:
+    def test_is_online_for_unknown_user(self, manager: ConnectionManager) -> None:
         """
         测试未连接用户返回 False
         Args:

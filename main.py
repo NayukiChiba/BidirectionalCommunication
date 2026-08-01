@@ -226,9 +226,6 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
     Returns:
         None
     """
-    # TODO(Issue 05-6):
-    # 在 ConnectionManager 的单元测试通过后，创建应用级管理器实例，
-    # 并使用 manager.connect(user_id, websocket) 替换下面的直接 accept。
     # 接受 WebSocket 握手
     manager = ConnectionManager()
     await manager.connect(user_id=user_id, websocket=websocket)
@@ -271,16 +268,14 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
                 sent_at=datetime.now(timezone.utc),
             )
 
-            # TODO(Issue 05-8):
-            # 本 Issue 先通过 send_to_user 向当前用户返回消息事件。
-            # 向 recipient_id 真正路由消息属于 Issue 06。
-            await websocket.send_json(message_event.model_dump(mode="json"))
+            await manager.send_to_user(
+                user_id=user_id, data=message_event.model_dump(mode="json")
+            )
 
-    except WebSocketDisconnect as disconnectError:
+    except WebSocketDisconnect:
         # 客户端断开, 结束当前的连接
-        print(f"WebSocket 客户端已断开, 关闭码: {disconnectError.code}")
+        manager.disconnect(user_id=user_id, websocket=websocket)
     finally:
-        # TODO(Issue 05-9):
         # 接入管理器后，无论正常断开还是发生异常，都调用 disconnect。
         # disconnect 必须只删除与当前 websocket 相同的连接。
-        pass
+        manager.disconnect(user_id=user_id, websocket=websocket)
