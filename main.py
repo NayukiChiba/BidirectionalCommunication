@@ -171,7 +171,7 @@ class ConnectionManager:
         if not self.is_online(user_id=user_id):
             return False
         #  检查 websocket 连接是否正确
-        if self._connections[user_id] != websocket:
+        if self._connections[user_id] is not websocket:
             return False
 
         # 如果 user_id 和 websocket 都存在且正确, 就把连接表中的这个内容删除掉
@@ -197,11 +197,11 @@ class ConnectionManager:
             user_id(str): 用户的 id
             data(dict[str, object]): json数据
         """
-        # 根据 user_id 查找 WebSocket。
-        websocket = self._connections[user_id]
         # 用户离线时返回 False。
         if not self.is_online(user_id=user_id):
             return False
+        # 根据 user_id 查找 WebSocket。
+        websocket = self._connections[user_id]
         # 用户在线时等待 send_json(data)
         await websocket.send_json(data)
         # 发送完成后返回 True
@@ -230,7 +230,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
     # 在 ConnectionManager 的单元测试通过后，创建应用级管理器实例，
     # 并使用 manager.connect(user_id, websocket) 替换下面的直接 accept。
     # 接受 WebSocket 握手
-    await websocket.accept()
+    manager = ConnectionManager()
+    await manager.connect(user_id=user_id, websocket=websocket)
 
     try:
         while True:
