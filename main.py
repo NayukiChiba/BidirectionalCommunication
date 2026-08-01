@@ -7,6 +7,7 @@ FastAPI 应用入口
 
 """
 
+import warnings
 from datetime import datetime, timezone
 from typing import Literal
 from uuid import UUID, uuid4
@@ -192,19 +193,67 @@ class ConnectionManager:
         data: dict[str, object],
     ) -> bool:
         """
+        旧接口, 已废弃
         向指定在线用户发送 JSON 数据
         Args:
             user_id(str): 用户的 id
             data(dict[str, object]): json数据
         """
-        # 用户离线时返回 False。
-        if not self.is_online(user_id=user_id):
+        warnings.warn(
+            (
+                "send_to_user() 已弃用，请改用 "
+                "send_message_to_user(sender_id=..., data=...)"
+            ),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return await self.send_message_to_user(
+            sender_id=user_id,
+            data=data,
+        )
+
+    async def send_message_to_user(
+        self,
+        sender_id: str | None = None,
+        *,
+        user_id: str | None = None,
+        data: dict[str, object],
+    ) -> bool:
+        """
+        向指定在线用户发送 JSON 数据
+
+        Args:
+            sender_id (str | None): 新版用户 ID 参数
+            user_id (str | None): 旧版用户 ID 参数，仅用于兼容
+            data (dict[str, object]): JSON 数据
+
+        Returns:
+            bool: 是否发送成功
+
+        Raises:
+            TypeError: 未提供用户 ID，或者同时提供两个 ID 参数
+        """
+        if sender_id is not None and user_id is not None:
+            raise TypeError("sender_id 和 user_id 不能同时提供")
+
+        if user_id is not None:
+            warnings.warn(
+                "user_id 参数已弃用，请改用 sender_id",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            sender_id = user_id
+
+        if sender_id is None:
+            raise TypeError("缺少必需参数：sender_id")
+
+        # 用户离线时返回 False
+        if not self.is_online(user_id=sender_id):
             return False
-        # 根据 user_id 查找 WebSocket。
-        websocket = self._connections[user_id]
+        # 根据 user_id 查找 WebSocket
+        websocket = self._connections[sender_id]
         # 用户在线时等待 send_json(data)
         await websocket.send_json(data)
-        # 发送完成后返回 True
         return True
 
 
@@ -267,9 +316,9 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
                     client_message_id=client_message_id,
                 )
 
-                # 通过 manager.send_to_user 向当前用户发送错误事件，
-                await manager.send_to_user(
-                    user_id=user_id, data=error_event.model_dump(mode="json")
+                # 通过 manager.send_message_to_user 向当前用户发送错误事件，
+                await manager.send_message_to_user(
+                    sender_id=user_id, data=error_event.model_dump(mode="json")
                 )
                 continue
             # 若 recipient_id == user_id，按既定规则处理，不能靠巧合。
@@ -279,8 +328,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
                     message=f"用户{send_message_command.recipient_id} 不在线",
                     client_message_id=send_message_command.client_message_id,
                 )
-                await manager.send_to_user(
-                    user_id=user_id, data=offline_error.model_dump(mode="json")
+                await manager.send_message_to_user(
+                    sender_id=user_id, data=offline_error.model_dump(mode="json")
                 )
                 continue
 
@@ -293,10 +342,9 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
                 sent_at=datetime.now(timezone.utc),
             )
 
-            # TODO(Issue 06-5): 将 message_event 推送给 recipient_id。
             # 发送成功后给 sender 返回 ack 确认。
-            if not await manager.send_to_user(
-                user_id=send_message_command.recipient_id,
+            if not await manager.send_message_to_user(
+                sender_id=send_message_command.recipient_id,
                 data=message_event.model_dump(mode="json"),
             ):
                 offline_error = ErrorEvent(
@@ -304,8 +352,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
                     message=f"用户 {send_message_command.recipient_id} 当前离线",
                     client_message_id=send_message_command.client_message_id,
                 )
-                await manager.send_to_user(
-                    user_id=user_id, data=offline_error.model_dump(mode="json")
+                await manager.send_message_to_user(
+                    sender_id=user_id, data=offline_error.model_dump(mode="json")
                 )
                 continue
 
@@ -314,7 +362,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
                 "client_message_id": str(send_message_command.client_message_id),
                 "server_message_id": str(message_event.server_message_id),
             }
-            await manager.send_to_user(user_id=user_id, data=ack)
+            await manager.send_message_to_user(sender_id=user_id, data=ack)
 
     except WebSocketDisconnect:
         # 客户端断开, 结束当前的连接

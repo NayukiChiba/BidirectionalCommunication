@@ -132,9 +132,9 @@ class TestConnectionManager:
         """
         assert manager.is_online("user-a") is False
 
-    # send_message_to_user
+    # ===== send_message_to_user =====
     @pytest.mark.asyncio
-    async def test_send_to_user_calls_send_json(
+    async def test_send_message_to_user_calls_send_json(
         self,
         manager: ConnectionManager,
         mock_websocket: MagicMock,
@@ -147,7 +147,7 @@ class TestConnectionManager:
         """
         await manager.connect(user_id="user-a", websocket=mock_websocket)
         data = {"type": "message", "content": "hello"}
-        result = await manager.send_to_user(user_id="user-a", data=data)
+        result = await manager.send_message_to_user(sender_id="user-a", data=data)
         assert result is True
         assert mock_websocket.send_json.await_count == 1
 
@@ -158,5 +158,57 @@ class TestConnectionManager:
         Args:
             manager(ConnectionManager): 连接管理器
         """
-        result = await manager.send_to_user(user_id="user-a", data={"type": "message"})
+        result = await manager.send_message_to_user(
+            sender_id="user-a",
+            data={"type": "message"},
+        )
         assert result is False
+
+    @pytest.mark.asyncio
+    async def test_send_message_to_user_accepts_legacy_user_id(
+        self,
+        manager: ConnectionManager,
+        mock_websocket: MagicMock,
+    ) -> None:
+        """测试兼容 user_id 参数并发出弃用警告"""
+        await manager.connect(user_id="user-a", websocket=mock_websocket)
+
+        with pytest.warns(DeprecationWarning, match="user_id 参数已弃用"):
+            result = await manager.send_message_to_user(
+                user_id="user-a",
+                data={"type": "message"},
+            )
+
+        assert result is True
+        mock_websocket.send_json.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_send_message_to_user_rejects_both_user_ids(
+        self,
+        manager: ConnectionManager,
+    ) -> None:
+        """测试不能同时提供 sender_id 和 user_id"""
+        with pytest.raises(TypeError, match="不能同时提供"):
+            await manager.send_message_to_user(
+                sender_id="user-a",
+                user_id="user-b",
+                data={"type": "message"},
+            )
+
+    @pytest.mark.asyncio
+    async def test_send_to_user_emits_deprecation_warning(
+        self,
+        manager: ConnectionManager,
+        mock_websocket: MagicMock,
+    ) -> None:
+        """测试旧函数保持可用并发出弃用警告"""
+        await manager.connect(user_id="user-a", websocket=mock_websocket)
+
+        with pytest.warns(DeprecationWarning, match=r"send_to_user\(\) 已弃用"):
+            result = await manager.send_to_user(
+                user_id="user-a",
+                data={"type": "message"},
+            )
+
+        assert result is True
+        mock_websocket.send_json.assert_awaited_once()
