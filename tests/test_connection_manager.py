@@ -91,7 +91,6 @@ class TestConnectionManager:
         assert result is True
         assert manager.is_online("user-a") is False
 
-    @pytest.mark.asyncio
     def test_disconnect_user_not_online(
         self,
         manager: ConnectionManager,
@@ -123,3 +122,42 @@ class TestConnectionManager:
         result = manager.disconnect(user_id="user-a", websocket=other_websocket)
         assert result is False
         assert manager.is_online("user-a") is True
+
+    # ===== is_online =====
+    @pytest.mark.asyncio
+    async def test_is_online_for_unknown_user(self, manager: ConnectionManager) -> None:
+        """
+        测试未连接用户返回 False
+        Args:
+            manager(ConnectionManager): 连接管理器
+        """
+        assert manager.is_online("user-a") is False
+
+    # send_message_to_user
+    @pytest.mark.asyncio
+    async def test_send_to_user_calls_send_json(
+        self,
+        manager: ConnectionManager,
+        mock_websocket: MagicMock,
+    ) -> None:
+        """
+        测试在线用户发送消息的时候调用 send_json
+        Args:
+            manager(ConnectionManager): 连接管理器
+            mock_websocket(MagicMock): mock 的 websocket 连接
+        """
+        await manager.connect(user_id="user-a", websocket=mock_websocket)
+        data = {"type": "message", "content": "hello"}
+        result = await manager.send_to_user(user_id="user-a", data=data)
+        assert result is True
+        assert mock_websocket.send_json.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_send_to_offline_user(self, manager: ConnectionManager) -> None:
+        """
+        测试离线用户发送消息
+        Args:
+            manager(ConnectionManager): 连接管理器
+        """
+        result = await manager.send_to_user(user_id="user-a", data={"type": "message"})
+        assert result is False
