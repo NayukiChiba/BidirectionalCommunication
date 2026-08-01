@@ -72,3 +72,54 @@ class TestConnectionManager:
         """
         with pytest.raises(ValueError):
             await manager.connect(user_id="    ", websocket=mock_websocket)
+
+    # ===== disconnect =====
+    @pytest.mark.asyncio
+    async def test_disconnet_removes_user(
+        self,
+        manager: ConnectionManager,
+        mock_websocket: MagicMock,
+    ) -> None:
+        """
+        正常断开连接之后 user 为不在线状态
+        Args:
+            manager(ConnectionManager): 连接管理器
+            mock_websocket(MagicMock): mock 的 websocket 连接
+        """
+        await manager.connect(user_id="user-a", websocket=mock_websocket)
+        result = manager.disconnect(user_id="user-a", websocket=mock_websocket)
+        assert result is True
+        assert manager.is_online("user-a") is False
+
+    @pytest.mark.asyncio
+    def test_disconnect_user_not_online(
+        self,
+        manager: ConnectionManager,
+        mock_websocket: MagicMock,
+    ) -> None:
+        """
+        断开不在线用户返回 False
+        Args:
+            manager(ConnectionManager): 连接管理器
+            mock_websocket(MagicMock): mock 的 websocket 连接
+        """
+        result = manager.disconnect(user_id="user-a", websocket=mock_websocket)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_disconnect_wrong_websocket(
+        self,
+        manager: ConnectionManager,
+        mock_websocket: MagicMock,
+    ) -> None:
+        """
+        使用错误的 WebSocket 断开失败, 用户仍然在线
+        Args:
+            manager(ConnectionManager): 连接管理器
+            mock_websocket(MagicMock): mock 的 websocket 连接
+        """
+        await manager.connect(user_id="user-a", websocket=mock_websocket)
+        other_websocket = MagicMock()
+        result = manager.disconnect(user_id="user-a", websocket=other_websocket)
+        assert result is False
+        assert manager.is_online("user-a") is True
