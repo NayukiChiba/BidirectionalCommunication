@@ -6,7 +6,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from main import ConnectionManager
+from main import (
+    DUPLICATE_CONNECTION_CODE,
+    DUPLICATE_CONNECTION_REASON,
+    SERVICE_SHUTDOWN_CODE,
+    SERVICE_SHUTDOWN_REASON,
+    ConnectionManager,
+)
 
 
 class TestConnectionManager:
@@ -28,6 +34,7 @@ class TestConnectionManager:
         """
         ws = MagicMock()
         ws.accept = AsyncMock()
+        ws.close = AsyncMock()
         ws.send_json = AsyncMock()
         return ws
 
@@ -72,6 +79,39 @@ class TestConnectionManager:
         """
         with pytest.raises(ValueError):
             await manager.connect(user_id="    ", websocket=mock_websocket)
+
+    @pytest.mark.asyncio
+    async def test_duplicate_connection_replaces_and_closes_old_connection(
+        self, manager: ConnectionManager, mock_websocket: MagicMock
+    ) -> None:
+        """新连接应替换并按稳定原因关闭旧连接。"""
+        new_websocket = MagicMock()
+        new_websocket.accept = AsyncMock()
+        new_websocket.close = AsyncMock()
+
+        await manager.connect("user-a", mock_websocket)
+        await manager.connect("user-a", new_websocket)
+
+        mock_websocket.close.assert_awaited_once_with(
+            code=DUPLICATE_CONNECTION_CODE,
+            reason=DUPLICATE_CONNECTION_REASON,
+        )
+        assert manager._connections["user-a"] is new_websocket
+
+    @pytest.mark.asyncio
+    async def test_replaced_connection_cannot_remove_current_connection(
+        self, manager: ConnectionManager, mock_websocket: MagicMock
+    ) -> None:
+        """旧连接晚退出时不能删除已登记的新连接。"""
+        new_websocket = MagicMock()
+        new_websocket.accept = AsyncMock()
+        new_websocket.close = AsyncMock()
+
+        await manager.connect("user-a", mock_websocket)
+        await manager.connect("user-a", new_websocket)
+
+        assert manager.disconnect("user-a", mock_websocket) is False
+        assert manager._connections["user-a"] is new_websocket
 
     # ===== disconnect =====
     @pytest.mark.asyncio
@@ -181,6 +221,48 @@ class TestConnectionManager:
 
         assert result is False
         assert manager.is_online("user-a") is False
+
+    @pytest.mark.asyncio
+    async def test_send_failure_does_not_remove_replacement(
+        self, manager: ConnectionManager, mock_websocket: MagicMock
+    ) -> None:
+        """发送失败期间发生连接替换时保留新连接。"""
+        replacement = MagicMock()
+        replacement.accept = AsyncMock()
+        replacement.close = AsyncMock()
+
+        async def replace_then_fail(data: dict[str, object]) -> None:
+            await manager.connect("user-a", replacement)
+            raise RuntimeError("旧连接已关闭")
+
+        mock_websocket.send_json.side_effect = replace_then_fail
+        await manager.connect("user-a", mock_websocket)
+
+        result = await manager.send_message_to_user(
+            sender_id="user-a", data={"type": "message"}
+        )
+
+        assert result is False
+        assert manager._connections["user-a"] is replacement
+
+    @pytest.mark.asyncio
+    async def test_close_all_continues_after_failure(
+        self, manager: ConnectionManager, mock_websocket: MagicMock
+    ) -> None:
+        """停止清理应忽略单个关闭失败并清空连接表。"""
+        failing_websocket = MagicMock()
+        failing_websocket.accept = AsyncMock()
+        failing_websocket.close = AsyncMock(side_effect=RuntimeError("关闭失败"))
+
+        await manager.connect("user-a", failing_websocket)
+        await manager.connect("user-b", mock_websocket)
+        await manager.close_all()
+
+        mock_websocket.close.assert_awaited_once_with(
+            code=SERVICE_SHUTDOWN_CODE,
+            reason=SERVICE_SHUTDOWN_REASON,
+        )
+        assert manager._connections == {}
 
     @pytest.mark.asyncio
     async def test_send_message_to_user_accepts_legacy_user_id(

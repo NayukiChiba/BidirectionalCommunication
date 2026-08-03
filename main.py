@@ -7,7 +7,9 @@ FastAPI 应用入口
 
 """
 
+import logging
 import warnings
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Literal
 from uuid import UUID, uuid4
@@ -15,10 +17,12 @@ from uuid import UUID, uuid4
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-# TODO(Issue 07 - 应用生命周期): 在 FastAPI 应用初始化位置接入连接管理器生命周期。
-# 实现思路：启动时明确 ConnectionManager 的所有权；停止时逐个关闭仍存活的连接，
-# 即使部分关闭失败也要继续清理其他连接，最后保证连接表为空并记录异常。
-app = FastAPI()
+logger = logging.getLogger(__name__)
+
+DUPLICATE_CONNECTION_CODE = 4001
+DUPLICATE_CONNECTION_REASON = "该账号已在其他连接登录"
+SERVICE_SHUTDOWN_CODE = 1001
+SERVICE_SHUTDOWN_REASON = "服务停止"
 
 
 class SendMessageCommand(BaseModel):
@@ -122,9 +126,6 @@ class ErrorEvent(BaseModel):
     client_message_id: UUID | None = None
 
 
-# TODO(Issue 07 - 状态设计): 在 ConnectionManager 文档中补充最小状态转换图。
-# 实现思路：描述“未连接 -> 已连接 -> 被新连接替换 -> 关闭”的转换，明确连接表中
-# 每个用户最多只有一个当前连接，旧连接对象只能清理自己，不能影响替换后的连接。
 class ConnectionManager:
     """
     单进程 WebSocket 在线连接管理器
@@ -138,6 +139,11 @@ class ConnectionManager:
     注意：
         该对象只管理当前进程中的技术连接，不负责创建消息、
         验证协议、保存聊天记录或处理用户认证。
+
+    状态转换：
+        未连接 -> 已连接 -> 被新连接替换 -> 关闭
+        每个用户最多保留一个当前连接。旧连接退出时只能清理自身，
+        不能删除已经替换它的新连接。
     """
 
     def __init__(self) -> None:
@@ -146,9 +152,20 @@ class ConnectionManager:
         # 键是用户 ID，值是该用户当前有效的 WebSocket。
         self._connections: dict[str, WebSocket] = {}
 
-    # TODO(Issue 07 - 停止清理): 在 ConnectionManager 中提供统一的全部连接关闭流程。
-    # 实现思路：先取得当前连接快照，再逐个主动关闭；单个连接关闭失败不能中断清理，
-    # 最终统一清空连接表，并由 FastAPI 停止阶段调用该流程。
+    async def close_all(self) -> None:
+        """关闭并清空当前管理器持有的全部连接。"""
+        connections = list(self._connections.items())
+        try:
+            for user_id, websocket in connections:
+                try:
+                    await websocket.close(
+                        code=SERVICE_SHUTDOWN_CODE,
+                        reason=SERVICE_SHUTDOWN_REASON,
+                    )
+                except Exception:
+                    logger.exception("关闭用户 %s 的 WebSocket 连接失败", user_id)
+        finally:
+            self._connections.clear()
 
     async def connect(self, user_id: str, websocket: WebSocket) -> None:
         """
@@ -162,16 +179,19 @@ class ConnectionManager:
         if not user_id:
             raise ValueError("user_id 不可以为空")
 
-        # TODO(Issue 07 - 重复登录): 在 connect 中实现“最后建立的连接优先”。
-        # 实现思路：新连接握手成功后取得旧连接并登记新连接，再主动关闭旧连接；关闭旧连接
-        # 时使用已记录的应用级关闭码和稳定原因，且旧连接关闭失败不能撤销新连接。
-        # 关闭码需先在协议文档中说明用途，避免与正常关闭、服务停止等原因混用。
-
         # websocket 握手
         await websocket.accept()
 
-        # 保存 user_id 和 websocket 到连接表中
+        old_websocket = self._connections.get(user_id)
         self._connections[user_id] = websocket
+        if old_websocket is not None and old_websocket is not websocket:
+            try:
+                await old_websocket.close(
+                    code=DUPLICATE_CONNECTION_CODE,
+                    reason=DUPLICATE_CONNECTION_REASON,
+                )
+            except Exception:
+                logger.exception("关闭用户 %s 被替换的 WebSocket 连接失败", user_id)
 
     def disconnect(self, user_id: str, websocket: WebSocket) -> bool:
         """
@@ -183,10 +203,6 @@ class ConnectionManager:
         Returns:
             bool: 是否成功删除连接
         """
-        # TODO(Issue 07 - 交错断开): 在此处保持“连接身份匹配后才能删除”的规则。
-        # 实现思路：比较连接表中的当前对象与退出端点携带的 websocket；只有二者相同
-        # 才删除。重点用“新连接已替换、旧连接随后退出”的交错顺序验证该规则。
-
         # 检查 user_id 是否在当前的连接表中
         if not self.is_online(user_id=user_id):
             return False
@@ -266,11 +282,6 @@ class ConnectionManager:
         if sender_id is None:
             raise TypeError("缺少必需参数：sender_id")
 
-        # TODO(Issue 07 - 发送竞态): 在发送路径中维持连接快照与精确清理策略。
-        # 实现思路：发送前只取得一次目标连接；发送失败时仅尝试删除这个连接对象。
-        # 如果期间已有新连接替换它，disconnect 的身份检查必须保留新连接，同时异常
-        # 需要转换为明确的发送失败结果，不能静默忽略。
-
         # 获取当前连接，避免在线检查与读取连接使用两次查询。
         websocket = self._connections.get(sender_id)
         if websocket is None:
@@ -286,6 +297,23 @@ class ConnectionManager:
         return True
 
 
+# 将局部 ConnectionManager 提升为模块级单例，使不同连接的用户可以互相发现和通信。
+manager = ConnectionManager()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """管理应用持有的连接管理器生命周期。"""
+    app.state.connection_manager = manager
+    try:
+        yield
+    finally:
+        await manager.close_all()
+
+
+app = FastAPI(lifespan=lifespan)
+
+
 @app.get("/health")
 async def get_health():
     """
@@ -294,13 +322,6 @@ async def get_health():
     return {"status": "ok"}
 
 
-# 将局部 ConnectionManager 提升为模块级单例，使不同连接的用户可以互相发现和通信。
-manager = ConnectionManager()
-
-
-# TODO(Issue 07 - 端点退出): 保证被替换的旧端点退出时携带自己的 websocket 清理。
-# 实现思路：主动关闭会让旧端点的接收循环结束；所有退出路径最终都进入 finally，
-# 并把当前端点自己的连接对象交给 disconnect，依靠身份检查避免误删新连接。
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
     """
@@ -315,9 +336,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
     await manager.connect(user_id=user_id, websocket=websocket)
 
     try:
-        # TODO(Issue 07 - 心跳结论): 当前接收循环暂不增加应用级心跳。
-        # 实现思路：先记录 WebSocket 协议级 Ping/Pong 与业务心跳的职责差异；在没有
-        # 明确空闲超时、代理断链检测或在线状态时效需求前，不引入心跳消息和定时任务。
+        # 当前没有空闲超时或在线状态时效需求，暂不增加应用级心跳。
         while True:
             # 等待 websocket 接受文本
             raw_message = (
@@ -410,10 +429,3 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
         # 接入管理器后，无论正常断开还是发生异常，都调用 disconnect。
         # disconnect 必须只删除与当前 websocket 相同的连接。
         manager.disconnect(user_id=user_id, websocket=websocket)
-
-
-# TODO(Issue 07 - 验收测试): 在连接管理器和 WebSocket 测试文件中补充生命周期场景。
-# 实现思路：分别覆盖重复登录关闭旧连接及关闭原因、旧连接晚于新连接退出、发送失败
-# 恰逢连接替换、部分连接关闭失败时的服务停止清理，并断言最终有效连接唯一且连接表为空。
-# TODO(Issue 07 - 文档): 在协议文档记录最后登录者优先策略、关闭码、关闭原因和心跳结论，
-# 同时回答该策略为何属于业务规则、哪个交错测试能复现误删，以及单进程为何不需要 Redis 或锁。
