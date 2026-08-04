@@ -2,16 +2,27 @@
 WebSocket 连接生命周期验收测试
 """
 
+from collections.abc import Iterator
+
 import pytest
 from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
 
 from main import app, manager
 
-test_client = TestClient(app)
+
+@pytest.fixture
+def test_client() -> Iterator[TestClient]:
+    """为每个测试创建独立客户端并清理连接状态。"""
+    manager._connections.clear()
+    try:
+        with TestClient(app) as client:
+            yield client
+    finally:
+        manager._connections.clear()
 
 
-def test_duplicate_login_replaces_old_connection() -> None:
+def test_duplicate_login_replaces_old_connection(test_client: TestClient) -> None:
     """
     测试重复登录会关闭旧连接, 而且不影响新连接
     """
@@ -50,10 +61,6 @@ def test_duplicate_login_replaces_old_connection() -> None:
     assert manager.is_online("user-a") is False
 
 
-# TODO(Issue 08 - 测试隔离): 将 TestClient 生命周期和连接表清理放入 fixture，
-# 保证每个验收场景独立运行，测试结果不依赖执行顺序。
-
-
 @pytest.mark.parametrize(
     ("first_user_id", "second_user_id"),
     [
@@ -62,6 +69,7 @@ def test_duplicate_login_replaces_old_connection() -> None:
     ],
 )
 def test_disconnect_users_in_any_order(
+    test_client: TestClient,
     first_user_id: str,
     second_user_id: str,
 ) -> None:
@@ -89,6 +97,7 @@ def test_disconnect_users_in_any_order(
     ],
 )
 def test_disconnect_replaced_connections_in_any_order(
+    test_client: TestClient,
     old_connection_first: bool,
 ) -> None:
     """测试重复登录的新旧连接按任意顺序退出后清空连接表。"""
