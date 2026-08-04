@@ -19,6 +19,88 @@ test_client = TestClient(app)
 # TODO(Issue 08 - 双向多消息): 同时连接两个不同用户，验证 A -> B、B -> A、
 # A -> B 多次投递；逐条校验 message 与 ack 的 client_message_id、
 # server_message_id 对应，确保消息内容和发送者身份正确。
+def test_bidirectional_message_send_and_receive() -> None:
+    """
+    测试双向多消息
+    """
+    client_message_id = "5cbe59a7-1c45-4dd9-9302-d9eb2586bb6b"
+    server_message_id = "c2a54715-f62f-4aa2-a2b4-b8b7a316f2b5"
+
+    with test_client.websocket_connect("/ws?user_id=user-b") as user_b_websocket:
+        with test_client.websocket_connect("/ws?user_id=user-a") as user_a_websocket:
+            message_a_events = []
+            ack_a_events = []
+            message_b_events = []
+            ack_b_events = []
+            # user_a 向 user_b 发送多条消息
+            user_a_websocket.send_json(
+                {
+                    "type": "send_message",
+                    "recipient_id": "user-b",
+                    "content": "Hello World",
+                    "client_message_id": client_message_id,
+                }
+            )
+            message_a_events.append(user_b_websocket.receive_json())
+            ack_a_events.append(user_a_websocket.receive_json())
+
+            user_a_websocket.send_json(
+                {
+                    "type": "send_message",
+                    "recipient_id": "user-b",
+                    "content": "Hello World",
+                    "client_message_id": client_message_id,
+                }
+            )
+            message_a_events.append(user_b_websocket.receive_json())
+            ack_a_events.append(user_a_websocket.receive_json())
+            user_a_websocket.send_json(
+                {
+                    "type": "send_message",
+                    "recipient_id": "user-b",
+                    "content": "Hello World",
+                    "client_message_id": client_message_id,
+                }
+            )
+            message_a_events.append(user_b_websocket.receive_json())
+            ack_a_events.append(user_a_websocket.receive_json())
+            # user_b 向 user_a 发送消息
+
+            user_b_websocket.send_json(
+                {
+                    "type": "send_message",
+                    "recipient_id": "user-a",
+                    "content": "Hello World",
+                    "client_message_id": server_message_id,
+                }
+            )
+            message_b_events.append(user_a_websocket.receive_json())
+            ack_b_events.append(user_b_websocket.receive_json())
+
+    for message_event, ack_event in zip(message_a_events, ack_a_events):
+        assert message_event["type"] == "message"
+        assert message_event["client_message_id"] == client_message_id
+        assert message_event["content"] == "Hello World"
+        assert message_event["recipient_id"] == "user-b"
+        assert message_event["sender_id"] == "user-a"
+
+        assert ack_event["type"] == "ack"
+        assert ack_event["client_message_id"] == client_message_id
+        assert ack_event["server_message_id"] == message_event["server_message_id"]
+        UUID(message_event["server_message_id"])
+
+    for message_event, ack_event in zip(message_b_events, ack_b_events):
+        assert message_event["type"] == "message"
+        assert message_event["client_message_id"] == server_message_id
+        assert message_event["content"] == "Hello World"
+        assert message_event["recipient_id"] == "user-a"
+        assert message_event["sender_id"] == "user-b"
+
+        assert ack_event["type"] == "ack"
+        assert ack_event["client_message_id"] == server_message_id
+        assert ack_event["server_message_id"] == message_event["client_message_id"]
+        UUID(message_event["client_message_id"])
+
 
 # TODO(Issue 08 - 重复登录接口验收): 用同一 user_id 依次建立两个 WebSocket；
 # 断言旧连接以 4001 和固定原因关闭，新连接仍能收发消息，旧连接退出不影响新连接。
