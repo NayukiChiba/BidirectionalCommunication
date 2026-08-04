@@ -99,16 +99,6 @@ def test_bidirectional_message_send_and_receive() -> None:
         UUID(message_event["server_message_id"])
 
 
-# TODO(Issue 08 - 重复登录接口验收): 用同一 user_id 依次建立两个 WebSocket；
-# 断言旧连接以 4001 和固定原因关闭，新连接仍能收发消息，旧连接退出不影响新连接。
-
-# TODO(Issue 08 - 任意顺序断开): 参数化验证 A 先断开、B 先断开以及重复登录后的
-# 新旧连接交错退出；全部上下文结束后断言连接表为空，不使用固定时长 sleep。
-
-# TODO(Issue 08 - 测试隔离): 将 TestClient 生命周期和连接表清理放入 fixture，
-# 保证每个验收场景独立运行，测试结果不依赖执行顺序。
-
-
 def test_deliver_message_and_acknowledge_sender() -> None:
     """测试接收方收到消息且发送方收到确认"""
     client_message_id = "5cbe59a7-1c45-4dd9-9302-d9eb2586bb6b"
