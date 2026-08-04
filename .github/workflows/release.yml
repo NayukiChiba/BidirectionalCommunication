@@ -1,0 +1,39 @@
+name: 发布 GitHub Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: 创建 Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出标签代码
+        uses: actions/checkout@v6
+
+      - name: 检查发布说明
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          changelog_path="changelogs/${TAG_NAME}.md"
+          if [[ ! -f "${changelog_path}" ]]; then
+            echo "::error file=${changelog_path}::找不到标签对应的发布说明"
+            exit 1
+          fi
+
+      - name: 创建 GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          gh release create "${TAG_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "BidirectionalCommunication ${TAG_NAME}" \
+            --notes-file "changelogs/${TAG_NAME}.md" \
+            --verify-tag \
+            --latest
