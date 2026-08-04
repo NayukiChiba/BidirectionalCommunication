@@ -7,6 +7,11 @@ from main import app
 test_client = TestClient(app)
 
 
+# TODO(Issue 08 - 协议错误补全): 在已有非法 JSON、空白内容、错误 type 和发送者
+# 防伪造测试基础上，补充缺少字段、超长字段和其他多余字段，并校验稳定错误结构及
+# 可获得时的 client_message_id。发送者伪造用例还应确认接收方未收到消息。
+
+
 def test_websocket_invalid_json() -> None:
     """测试非法 JSON"""
     with test_client.websocket_connect("/ws?user_id=user-a") as websocket:
