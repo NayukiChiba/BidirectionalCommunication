@@ -3,6 +3,7 @@ WebSocket 连接生命周期验收测试
 """
 
 import pytest
+from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
 
 from main import app, manager
@@ -10,8 +11,44 @@ from main import app, manager
 test_client = TestClient(app)
 
 
-# TODO(Issue 08 - 重复登录接口验收): 用同一 user_id 依次建立两个 WebSocket；
-# 断言旧连接以 4001 和固定原因关闭，新连接仍能收发消息，旧连接退出不影响新连接。
+def test_duplicate_login_replaces_old_connection() -> None:
+    """
+    测试重复登录会关闭旧连接, 而且不影响新连接
+    """
+    client_message_id = "819145f5-5ddb-4ae1-a382-f81fb81e6f08"
+
+    with test_client.websocket_connect("/ws?user_id=user-a") as old_websocket:
+        with test_client.websocket_connect("/ws?user_id=user-a") as new_websocket:
+            with pytest.raises(WebSocketDisconnect) as exception_info:
+                old_websocket.receive_text()
+
+                assert exception_info.value.code == 4001
+                assert exception_info.value.reason == "该账号已在其他连接登录"
+
+            # 关闭旧连接, 新连接应该还是在线的
+            old_websocket.close()
+            assert manager.is_online("user-a") is True
+
+            new_websocket.send_json(
+                {
+                    "type": "send_message",
+                    "recipient_id": "user-a",
+                    "content": "新连接仍然可用",
+                    "client_message_id": client_message_id,
+                }
+            )
+
+            message_event = new_websocket.receive_json()
+            ack_event = new_websocket.receive_json()
+
+            assert message_event["type"] == "message"
+            assert message_event["content"] == "新连接仍然可用"
+            assert message_event["client_message_id"] == client_message_id
+            assert ack_event["type"] == "ack"
+            assert ack_event["server_message_id"] == message_event["server_message_id"]
+
+    assert manager.is_online("user-a") is False
+
 
 # TODO(Issue 08 - 测试隔离): 将 TestClient 生命周期和连接表清理放入 fixture，
 # 保证每个验收场景独立运行，测试结果不依赖执行顺序。
