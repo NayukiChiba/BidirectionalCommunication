@@ -2,6 +2,14 @@
 
 一个基于 Python 和 FastAPI 构建的双向通信学习项目。
 
+项目文档使用 VitePress 构建：
+
+```bash
+cd docs
+npm install
+npm run dev
+```
+
 项目以 WebSocket 私聊为主线，逐步学习和实践：
 
 - HTTP 与 WebSocket 通信。
