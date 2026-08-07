@@ -10,12 +10,21 @@ FastAPI 应用入口
 import logging
 import warnings
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Literal
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
+from domain import (
+    ChatMessage,
+    ClientMessageId,
+    DomainError,
+    MessageContent,
+    UserId,
+    create_chat_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +133,33 @@ class ErrorEvent(BaseModel):
     code: str
     message: str
     client_message_id: UUID | None = None
+
+
+def to_chat_message(
+    command: SendMessageCommand,
+    *,
+    sender_id: str,
+    recipient_id: str,
+) -> ChatMessage:
+    """将已校验的传输命令显式转换为消息领域实体。"""
+    return create_chat_message(
+        client_message_id=ClientMessageId(command.client_message_id),
+        sender_id=UserId(sender_id),
+        recipient_id=UserId(recipient_id),
+        content=MessageContent(command.content),
+    )
+
+
+def to_message_event(message: ChatMessage) -> MessageEvent:
+    """将消息领域实体显式转换为 WebSocket 传输事件。"""
+    return MessageEvent(
+        server_message_id=message.message_id.value,
+        client_message_id=message.client_message_id.value,
+        sender_id=message.sender_id.value,
+        recipient_id=message.recipient_id.value,
+        content=message.content.value,
+        sent_at=message.created_at,
+    )
 
 
 class ConnectionManager:
@@ -391,18 +427,29 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
                 )
                 continue
 
-            message_event = MessageEvent(
-                server_message_id=uuid4(),
-                client_message_id=send_message_command.client_message_id,
-                sender_id=user_id,
-                recipient_id=target_user_id,
-                content=send_message_command.content,
-                sent_at=datetime.now(timezone.utc),
-            )
+            try:
+                chat_message = to_chat_message(
+                    send_message_command,
+                    sender_id=user_id,
+                    recipient_id=target_user_id,
+                )
+            except DomainError:
+                invalid_message_error = ErrorEvent(
+                    code="invalid_message",
+                    message="消息字段验证失败",
+                    client_message_id=send_message_command.client_message_id,
+                )
+                await manager.send_message_to_user(
+                    sender_id=user_id,
+                    data=invalid_message_error.model_dump(mode="json"),
+                )
+                continue
+
+            message_event = to_message_event(chat_message)
 
             # 发送成功后给 sender 返回 ack 确认。
             if not await manager.send_message_to_user(
-                sender_id=target_user_id,
+                sender_id=chat_message.recipient_id.value,
                 data=message_event.model_dump(mode="json"),
             ):
                 offline_error = ErrorEvent(
@@ -417,8 +464,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
 
             ack = {
                 "type": "ack",
-                "client_message_id": str(send_message_command.client_message_id),
-                "server_message_id": str(message_event.server_message_id),
+                "client_message_id": str(chat_message.client_message_id),
+                "server_message_id": str(chat_message.message_id),
             }
             await manager.send_message_to_user(sender_id=user_id, data=ack)
 
