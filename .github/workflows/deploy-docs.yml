@@ -1,0 +1,65 @@
+name: 部署 VitePress 文档
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - ".github/workflows/deploy-docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 构建文档
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: 配置 GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: 安装文档依赖
+        working-directory: docs
+        run: npm ci
+
+      - name: 构建 VitePress 文档
+        working-directory: docs
+        run: npm run build
+
+      - name: 上传 Pages 构建产物
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs/.vitepress/dist
+
+  deploy:
+    name: 部署文档
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
