@@ -262,6 +262,8 @@ $RECYCLE.BIN/
 
 # 前端 / Node.js / 工程化产物
 node_modules/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
 .npm/
 .pnpm-store/
 .pnpm-debug.log*
