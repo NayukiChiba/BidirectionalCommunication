@@ -1,0 +1,13 @@
+"""应用用例依赖的端口。"""
+
+from typing import Protocol
+
+from domain import ChatMessage
+
+
+class MessageRepository(Protocol):
+    """发送消息用例需要的最小消息存储端口。"""
+
+    def add(self, message: ChatMessage) -> None:
+        """保存一条已经创建的聊天消息。"""
+        ...
