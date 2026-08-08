@@ -1,18 +1,10 @@
 """实时通知端口的 WebSocket 适配器。"""
 
-from enum import StrEnum
 from typing import Protocol
 
+from adapters.webSocketConnectionManager import ConnectionSendOutcome
 from application import DeliveryOutcome
 from domain import ChatMessage
-
-
-class ConnectionSendOutcome(StrEnum):
-    """连接管理器的一次实际发送结果。"""
-
-    DELIVERED = "delivered"
-    RECIPIENT_OFFLINE = "recipient_offline"
-    FAILED = "failed"
 
 
 class JsonConnectionSender(Protocol):
