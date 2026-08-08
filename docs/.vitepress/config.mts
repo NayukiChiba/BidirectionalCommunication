@@ -16,6 +16,7 @@ export default defineConfig({
       { text: "首页", link: "/" },
       { text: "快速开始", link: "/guide/getting-started" },
       { text: "消息协议", link: "/guide/message-protocol" },
+      { text: "架构", link: "/guide/architecture" },
       { text: "领域模型", link: "/domain/message-model" },
       {
         text: "GitHub",
@@ -29,6 +30,7 @@ export default defineConfig({
         items: [
           { text: "快速开始", link: "/guide/getting-started" },
           { text: "WebSocket 消息协议", link: "/guide/message-protocol" },
+          { text: "架构与组合根", link: "/guide/architecture" },
         ],
       },
       {

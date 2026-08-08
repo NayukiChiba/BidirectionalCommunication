@@ -34,4 +34,5 @@ WebSocket 技术细节，尚未引入数据库、事务和通用架构框架。
 
 - [快速开始](/guide/getting-started)：安装依赖、启动服务并运行测试。
 - [WebSocket 消息协议](/guide/message-protocol)：连接方式、消息结构和错误响应。
+- [架构与组合根](/guide/architecture)：各层职责、依赖方向和应用组装。
 - [消息领域模型](/domain/message-model)：领域概念、不变量和传输转换边界。
