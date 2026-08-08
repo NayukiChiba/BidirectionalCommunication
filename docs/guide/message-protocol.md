@@ -87,6 +87,8 @@ ws://127.0.0.1:8000/ws?user_id=user-a
 | `invalid_json` | 消息不是合法 JSON |
 | `invalid_message` | 命令字段或领域值不合法 |
 | `recipient_offline` | 目标用户当前没有可用连接 |
+| `delivery_failed` | 目标连接存在，但实时推送过程失败 |
+| `message_storage_failed` | 消息保存失败，因此没有执行实时推送 |
 
 ## 自发消息
 

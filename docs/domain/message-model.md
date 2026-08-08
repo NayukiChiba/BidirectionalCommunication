@@ -78,13 +78,14 @@
 
 ## 传输模型与领域模型
 
-传输模型属于 WebSocket 协议边界，领域模型属于业务规则边界。当前转换在 `main.py`
-中显式完成：
+传输模型属于 WebSocket 协议边界，应用命令表达系统用例输入，领域模型属于业务规则
+边界。当前转换显式完成：
 
-| 方向 | 转换入口 | 字段对应 |
+| 方向 | 负责位置 | 说明 |
 | --- | --- | --- |
-| `SendMessageCommand` → `ChatMessage` | `to_chat_message` | `recipient_id` → `recipient_id`，`content` → `content`，`client_message_id` → `client_message_id`；`sender_id` 来自当前连接 |
-| `ChatMessage` → `MessageEvent` | `to_message_event` | `message_id` → `server_message_id`，`created_at` → `sent_at`，其余字段保持同义对应 |
+| `SendMessagePayload` → `SendMessageCommand` | WebSocket 路由 | 解析协议字段，并补充来自当前连接的可信发送者身份 |
+| `SendMessageCommand` → `ChatMessage` | `SendMessageService` | 创建领域值对象，并通过 `create_chat_message` 创建新消息 |
+| `ChatMessage` → WebSocket 消息事件 | `WebSocketMessageNotifier` | 将领域字段转换成客户端协议字段并尝试实时投递 |
 
 Pydantic 负责检查外部数据结构，领域对象继续保护业务不变量。因此，即使传输模型已经
 校验通过，也必须经过值对象和实体的公开创建入口。
@@ -93,10 +94,9 @@ Pydantic 负责检查外部数据结构，领域对象继续保护业务不变�
 
 - 领域类型使用业务名称：`ChatMessage`、`MessageContent`。
 - 标识类型明确来源：服务端使用 `MessageId`，客户端使用 `ClientMessageId`。
-- 传输模型使用协议语义后缀：输入为 `Command`，输出为 `Event`。
+- WebSocket 输入模型使用 `Payload` 后缀，应用用例输入使用 `Command` 后缀。
 - 时间在领域内称为 `created_at`，对外协议字段仍保持 `sent_at`。
 - 领域异常使用 `Invalid...` 命名，只表达被违反的领域规则。
 
-当前的 `SendMessageCommand` 和 `MessageEvent` 是 WebSocket 传输模型，不是领域命令或
-领域事件。
-
+当前的 `SendMessageCommand` 是应用命令。发送给 WebSocket 客户端的 `message` 数据是
+传输事件，不是领域事件。
