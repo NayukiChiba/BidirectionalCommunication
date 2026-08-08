@@ -2,6 +2,23 @@
 
 一个基于 Python 和 FastAPI 构建的双向通信学习项目。
 
+## 安装与启动
+
+```bash
+uv sync --dev
+uv run uvicorn main:app --reload
+```
+
+`main.py` 是唯一程序启动入口，FastAPI 应用由 `bootstrap.create_app()` 完成组装。
+
+运行检查：
+
+```bash
+uv run ruff format --check .
+uv run ruff check .
+uv run pytest
+```
+
 项目文档使用 VitePress 构建：
 
 ```bash
@@ -29,6 +46,32 @@ npm run dev
 第一版不包含数据库、登录注册、群聊、文件传输、语音、视频和完整客户端界面。
 后续将在核心通信流程稳定后逐步增加持久化、身份认证和可靠投递能力。
 
+## 项目结构
+
+```text
+domain/         消息领域对象、不变量和领域异常
+application/    发送消息用例、命令、结果和端口
+adapters/       内存存储、WebSocket 连接与通知适配器
+entrypoints/    FastAPI 路由、Pydantic 协议模型和错误映射
+bootstrap.py    唯一组合根，创建并注入具体依赖
+main.py         唯一程序启动入口
+tests/          领域、应用、适配器、架构和外部行为测试
+docs/           VitePress 项目文档
+```
+
+依赖只能由外向内：
+
+```text
+main → bootstrap → entrypoints / adapters → application → domain
+```
+
+- Domain 只依赖 Python 标准库和自身模块。
+- Application 只依赖 Domain 和自身定义的端口。
+- Adapters 实现 Application 需要的端口。
+- Entrypoints 将外部协议转换为 Application 命令和响应。
+- Bootstrap 是唯一知道所有具体实现并负责生命周期的模块。
+- Main 只调用组合根并暴露 `app`。
+
 ## WebSocket 连接策略
 
 - 同一用户重复登录时采用“最后建立的连接优先”规则。新连接登记成功后，旧连接以
@@ -43,20 +86,10 @@ npm run dev
 - 在线表仅服务单进程，事件循环内的连接登记操作不跨线程，也不跨进程，所以当前不
   需要 Redis 或锁。扩展到多进程或多实例时，才需要引入共享在线状态与跨实例投递。
 
-## Issue 08 验收待办
+## 当前限制
 
-- [x] 自动化验证健康检查。
-- [x] 验证发送者 ID 不可伪造。
-- [x] 验证非法 JSON、基础非法字段和离线接收者错误。
-- [ ] 按 `tests/test_message_delivery.py` 中的 TODO 补齐双向多消息、重复登录、
-  任意顺序断开和测试隔离场景。
-- [ ] 按 `tests/test_message_validation.py` 中的 TODO 补齐协议字段边界断言。
-- [ ] 启动服务，在两个浏览器窗口中以 user-a 和 user-b 双向发送多条消息，验证
-  message、ack、协议错误、离线错误和重复登录关闭，并记录日期与浏览器版本。
-- [ ] 在 README 补充依赖安装、uvicorn 启动命令、浏览器控制台连接与发送示例，
-  以及每种消息的预期响应。
-- [ ] 在 README 记录 v0.1 限制：单进程、无认证、user_id 可冒用、无持久化、
-  无离线消息、无已读回执、进程退出丢状态、发送竞态可能丢消息、不支持跨实例投递。
-- [ ] 回答 Issue 的三个复盘问题：测试保护边界、外部行为回归信号和消息丢失场景。
-- [ ] 连续运行并通过 `uv run ruff format --check .`、`uv run ruff check .` 和
-  `uv run pytest`。
+- 只支持单进程在线连接和内存消息存储。
+- 没有身份认证，客户端可以自行指定 `user_id`。
+- 进程退出后在线状态和内存消息会丢失。
+- 没有离线投递、已读回执、重试或跨实例通信。
+- ACK 只表示服务端已向目标 WebSocket 执行发送，不表示用户已经阅读。
