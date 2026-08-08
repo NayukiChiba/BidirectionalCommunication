@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from main import (
+from adapters import (
     DUPLICATE_CONNECTION_CODE,
     DUPLICATE_CONNECTION_REASON,
     SERVICE_SHUTDOWN_CODE,

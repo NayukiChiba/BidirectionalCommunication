@@ -8,7 +8,9 @@ import pytest
 from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
 
-from main import app, manager
+from main import app
+
+manager = app.state.connection_manager
 
 
 @pytest.fixture

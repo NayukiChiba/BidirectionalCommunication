@@ -11,9 +11,10 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 
-from main import app, manager
+from main import app
 
 test_client = TestClient(app)
+manager = app.state.connection_manager
 
 
 def test_bidirectional_message_send_and_receive() -> None:
