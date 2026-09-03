@@ -9,14 +9,15 @@ import argparse
 from pathlib import Path
 from uuid import uuid4
 
+from alembic import command
 from sqlalchemy import select
 
 from src.adapters.database.connection import (
-    createDatabaseSchema,
     createSessionFactory,
     createSqliteEngine,
 )
 from src.adapters.database.messageMapper import toDomainMessage, toMessageRecord
+from src.adapters.database.migrationConfig import createMigrationConfig
 from src.adapters.database.models import MessageRecord
 from src.config import DATABASE_PATH
 from src.domain import ClientMessageId, MessageContent, UserId, create_chat_message
@@ -24,9 +25,9 @@ from src.domain import ClientMessageId, MessageContent, UserId, create_chat_mess
 
 def runExperiment(databasePath: Path) -> None:
     """运行提交后查询和回滚后不可见的独立实验。"""
+    command.upgrade(createMigrationConfig(databasePath), "head")
     engine = createSqliteEngine(databasePath, echo=True)
     sessionFactory = createSessionFactory(engine)
-    createDatabaseSchema(engine)
 
     committedMessage = create_chat_message(
         client_message_id=ClientMessageId(uuid4()),

@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from alembic import command
 from sqlalchemy import inspect, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
@@ -13,20 +14,21 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from src.adapters.database import (
     MessageRecord,
-    createDatabaseSchema,
     createSessionFactory,
     createSqliteEngine,
     toDomainMessage,
     toMessageRecord,
 )
+from src.adapters.database.migrationConfig import createMigrationConfig
 from src.domain import ClientMessageId, MessageContent, UserId, create_chat_message
 
 
 @pytest.fixture
 def databaseEngine(tmp_path: Path) -> Iterator[Engine]:
     """创建使用临时文件的 SQLite Engine。"""
-    engine = createSqliteEngine(tmp_path / "nested" / "messages.sqlite3")
-    createDatabaseSchema(engine)
+    databasePath = tmp_path / "nested" / "messages.sqlite3"
+    command.upgrade(createMigrationConfig(databasePath), "head")
+    engine = createSqliteEngine(databasePath)
     try:
         yield engine
     finally:

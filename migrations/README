@@ -1,0 +1,8 @@
+本目录保存数据库模式的唯一版本化迁移历史。
+
+env.py 从项目配置读取默认 SQLite 路径，并加载 DatabaseBase.metadata 供
+autogenerate 比较。versions/ 中的迁移必须提交到版本控制，并在生成后人工审查。
+
+应用启动不会自动执行迁移。开发和部署前应显式运行：
+
+    uv run alembic upgrade head

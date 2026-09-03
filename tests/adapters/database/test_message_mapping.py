@@ -3,15 +3,16 @@
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
+from alembic import command
 from sqlalchemy import inspect
 
 from src.adapters.database import (
     MessageRecord,
-    createDatabaseSchema,
     createSqliteEngine,
     toDomainMessage,
     toMessageRecord,
 )
+from src.adapters.database.migrationConfig import createMigrationConfig
 from src.domain import (
     ChatMessage,
     ClientMessageId,
@@ -44,7 +45,7 @@ def test_message_table_has_explained_constraints_and_index(tmp_path) -> None:
     """消息表应包含身份、幂等和收件箱查询所需结构。"""
     engine = createSqliteEngine(tmp_path / "schema.sqlite3")
     try:
-        createDatabaseSchema(engine)
+        command.upgrade(createMigrationConfig(tmp_path / "schema.sqlite3"), "head")
         inspector = inspect(engine)
 
         columns = {

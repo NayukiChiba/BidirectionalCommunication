@@ -12,7 +12,6 @@ from src.adapters import (
 )
 from src.adapters.database import (
     SqlAlchemyMessageUnitOfWorkFactory,
-    createDatabaseSchema,
     createSessionFactory,
     createSqliteEngine,
 )
@@ -35,9 +34,8 @@ def create_app(*, databasePath: Path = DATABASE_PATH) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        """创建临时数据库结构并释放组合根创建的连接资源。"""
+        """释放组合根创建的连接资源。"""
         try:
-            createDatabaseSchema(database_engine)
             yield
         finally:
             await connection_manager.close_all()

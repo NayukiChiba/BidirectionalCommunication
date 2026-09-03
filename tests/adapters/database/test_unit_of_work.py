@@ -5,6 +5,7 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+from alembic import command
 from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -12,10 +13,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from src.adapters.database import (
     MessageRecord,
     SqlAlchemyMessageUnitOfWorkFactory,
-    createDatabaseSchema,
     createSessionFactory,
     createSqliteEngine,
 )
+from src.adapters.database.migrationConfig import createMigrationConfig
 from src.application import MessageStorageError
 from src.domain import (
     ChatMessage,
@@ -30,8 +31,9 @@ from src.domain import create_chat_message as createChatMessage
 @pytest.fixture
 def databaseEngine(tmp_path: Path) -> Iterator[Engine]:
     """创建具有消息表的临时 SQLite Engine。"""
-    engine = createSqliteEngine(tmp_path / "unit-of-work.sqlite3")
-    createDatabaseSchema(engine)
+    databasePath = tmp_path / "unit-of-work.sqlite3"
+    command.upgrade(createMigrationConfig(databasePath), "head")
+    engine = createSqliteEngine(databasePath)
     try:
         yield engine
     finally:

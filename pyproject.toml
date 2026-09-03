@@ -53,6 +53,7 @@ keywords = [] # 这里可以添加一些关键词，帮助用户搜索到你的�
 
 # 运行时依赖（留空，按项目需要添加）
 dependencies = [
+    "alembic>=1.19.1",
     "fastapi[standard]>=0.140.0",
     "httpx2>=2.9.1",
     "pydantic>=2.13.4",
@@ -90,3 +91,8 @@ python-preference = "managed"
 
 # 开发工具（uv add --dev 旧版格式，建议用 dependency-groups 替代）
 # dev-dependencies = []
+
+# --------------- Alembic 配置 ---------------
+[tool.alembic]
+script_location = "%(here)s/migrations"
+prepend_sys_path = ["."]

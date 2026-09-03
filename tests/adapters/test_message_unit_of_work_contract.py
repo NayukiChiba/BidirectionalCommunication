@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from alembic import command
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -13,11 +14,11 @@ from src.adapters import InMemoryMessageUnitOfWorkFactory
 from src.adapters.database import (
     MessageRecord,
     SqlAlchemyMessageUnitOfWorkFactory,
-    createDatabaseSchema,
     createSessionFactory,
     createSqliteEngine,
     toDomainMessage,
 )
+from src.adapters.database.migrationConfig import createMigrationConfig
 from src.application import MessageUnitOfWorkFactory
 from src.domain import ChatMessage, ClientMessageId, MessageContent, UserId
 from src.domain import create_chat_message as createChatMessage
@@ -42,8 +43,9 @@ def unitOfWorkBackend(
         yield UnitOfWorkBackend(factory=factory, loadMessages=lambda: factory.messages)
         return
 
-    engine = createSqliteEngine(tmp_path / "contract.sqlite3")
-    createDatabaseSchema(engine)
+    databasePath = tmp_path / "contract.sqlite3"
+    command.upgrade(createMigrationConfig(databasePath), "head")
+    engine = createSqliteEngine(databasePath)
     sessionFactory = createSessionFactory(engine)
     try:
         yield UnitOfWorkBackend(

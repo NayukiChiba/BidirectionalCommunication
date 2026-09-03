@@ -4,16 +4,20 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from alembic import command
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from bootstrap import create_app
+from src.adapters.database.migrationConfig import createMigrationConfig
 
 
 @pytest.fixture
 def application(tmp_path: Path) -> FastAPI:
     """为每个测试创建使用独立 SQLite 文件的应用。"""
-    return create_app(databasePath=tmp_path / "application.sqlite3")
+    databasePath = tmp_path / "application.sqlite3"
+    command.upgrade(createMigrationConfig(databasePath), "head")
+    return create_app(databasePath=databasePath)
 
 
 @pytest.fixture
