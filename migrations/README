@@ -6,3 +6,20 @@ autogenerate 比较。versions/ 中的迁移必须提交到版本控制，并在
 应用启动不会自动执行迁移。开发和部署前应显式运行：
 
     uv run alembic upgrade head
+
+配置文件分工：
+
+- pyproject.toml 的 [tool.alembic] 告诉 Alembic 迁移目录在哪里，并把项目根目录
+  加入 Python 导入路径。
+- alembic.ini 配置日志输出。该文件保持纯 ASCII，避免 Windows 使用系统区域编码
+  读取时发生解码错误。
+- env.py 决定连接哪个数据库、加载哪份 ORM 元数据，以及如何运行在线或离线迁移。
+
+env.py 选择数据库的优先级：
+
+1. 命令行 `-x database_path=...` 指定的临时 SQLite 文件。
+2. 测试通过 `Config.set_main_option("sqlalchemy.url", ...)` 注入的 URL。
+3. `src.config.DATABASE_PATH` 配置的默认 `data/chat.sqlite3`。
+
+普通 `upgrade` 和 `downgrade` 会进入在线模式，创建短生命周期 Connection 并执行
+迁移。带 `--sql` 的命令进入离线模式，只输出 SQL，不连接或修改数据库。
