@@ -30,7 +30,7 @@ ws://127.0.0.1:8000/ws?user_id=user-a
 | `type` | 固定为 `send_message` |
 | `recipient_id` | 接收方用户标识，最长 64 个字符 |
 | `content` | 非空文字消息，最长 2000 个字符 |
-| `client_message_id` | 客户端提供的 UUID，用于关联消息和 ACK |
+| `client_message_id` | 客户端提供的 UUID，同时作为发送重试的幂等键 |
 
 发送者身份由当前 WebSocket 连接决定。客户端不能在消息载荷中传入 `sender_id`。
 
@@ -66,6 +66,10 @@ ws://127.0.0.1:8000/ws?user_id=user-a
 ```
 
 当前 ACK 只表示服务端已向目标 WebSocket 连接执行发送，不表示用户已经阅读消息。
+使用相同 `client_message_id` 重试时，服务端返回原消息的同一个 `server_message_id`。
+实时消息事件可能再次推送，客户端应按 `server_message_id` 去重。
+
+历史查询和离线恢复参见[历史分页、离线恢复与幂等](/guide/message-history)。
 
 ## 错误事件
 

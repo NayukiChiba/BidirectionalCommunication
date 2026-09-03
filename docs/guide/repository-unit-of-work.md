@@ -10,10 +10,12 @@ Application 和 Domain 不依赖 SQLAlchemy。
 ```python
 class MessageRepository(Protocol):
     def add(self, message: ChatMessage) -> None: ...
+    def getByClientMessageId(...) -> ChatMessage | None: ...
+    def listConversation(...) -> tuple[ChatMessage, ...]: ...
 ```
 
 它没有 `save(entity)`、`delete(entity)`、`findAll()` 等通用 CRUD。Repository 的接口
-跟随真实用例增长；历史消息查询进入项目时，再增加对应的领域查询语义。
+跟随真实用例增长；当前查询只表达幂等键查找和双人单聊历史，不暴露通用 ORM 查询。
 
 `MessageUnitOfWork` 表达一次应用操作的原子事务边界：
 
@@ -108,9 +110,8 @@ UnitOfWork.commit
 - 当前使用同步 Session，因此 WebSocket 处理期间的数据库访问会占用事件循环线程；
   Issue 16 会在理解事务后迁移到 `AsyncSession`。
 - 数据库结构由 Alembic 显式迁移，应用 lifespan 不创建或升级生产表。
-- 当前只保存消息，还没有历史、离线拉取和幂等响应；这些属于 Issue 15。
-- `(sender_id, client_message_id)` 唯一约束已保护数据库，但重复请求目前返回存储失败，
-  尚未实现查询原消息并返回相同结果的幂等语义。
+- 历史和离线恢复采用正向游标主动拉取，不建立独立离线队列。
+- 重复幂等请求返回原消息，但 WebSocket 实时事件仍可能重复投递。
 
 ## 测试策略
 

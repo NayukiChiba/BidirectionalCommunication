@@ -15,7 +15,7 @@ hero:
 
 features:
   - title: WebSocket 双向通信
-    details: 支持在线用户实时发送消息、ACK、协议错误和重复登录连接替换。
+    details: 支持实时发送、幂等重试、历史分页、离线恢复和重复登录连接替换。
   - title: 纯 Python 领域模型
     details: 使用值对象和实体维护消息标识、内容与 UTC 创建时间等业务不变量。
   - title: 渐进式架构学习
@@ -29,11 +29,13 @@ features:
 项目已经完成单进程 WebSocket 私聊的 v0.1 和 `M3 分层内核 v0.2`，正在学习
 `M4 持久化聊天 v0.3`。当前已通过 Repository 与 Unit of Work 将同步 SQLAlchemy
 接入发送消息用例，并使用 Alembic 管理数据库结构版本；应用启动不再隐式建表。
+当前进一步提供稳定游标历史查询、持久化离线恢复和数据库约束保护的消息幂等。
 
 ## 文档导航
 
 - [快速开始](/guide/getting-started)：安装依赖、启动服务并运行测试。
 - [WebSocket 消息协议](/guide/message-protocol)：连接方式、消息结构和错误响应。
+- [历史分页、离线恢复与幂等](/guide/message-history)：游标、主动拉取和重试语义。
 - [架构与组合根](/guide/architecture)：各层职责、依赖方向和应用组装。
 - [关系建模与 SQLAlchemy](/guide/database-foundations)：消息表、索引、ORM 映射和同步事务。
 - [Alembic 数据库迁移](/guide/database-migrations)：版本历史、升级降级和开发部署流程。

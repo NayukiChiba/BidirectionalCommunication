@@ -16,6 +16,7 @@ export default defineConfig({
       { text: "首页", link: "/" },
       { text: "快速开始", link: "/guide/getting-started" },
       { text: "消息协议", link: "/guide/message-protocol" },
+      { text: "历史消息", link: "/guide/message-history" },
       { text: "架构", link: "/guide/architecture" },
       { text: "数据库", link: "/guide/database-foundations" },
       { text: "迁移", link: "/guide/database-migrations" },
@@ -33,6 +34,7 @@ export default defineConfig({
         items: [
           { text: "快速开始", link: "/guide/getting-started" },
           { text: "WebSocket 消息协议", link: "/guide/message-protocol" },
+          { text: "历史分页、离线恢复与幂等", link: "/guide/message-history" },
           { text: "架构与组合根", link: "/guide/architecture" },
           { text: "关系建模与 SQLAlchemy", link: "/guide/database-foundations" },
           { text: "Alembic 数据库迁移", link: "/guide/database-migrations" },

@@ -15,7 +15,7 @@ messages
 └── created_at         DATETIME     NOT NULL
 
 UNIQUE (sender_id, client_message_id)
-INDEX  (recipient_id, created_at, message_id)
+INDEX  (sender_id, recipient_id, created_at, message_id)
 ```
 
 ### 约束用途
@@ -33,18 +33,19 @@ INDEX  (recipient_id, created_at, message_id)
 
 ### 索引用途
 
-`(recipient_id, created_at, message_id)` 服务于以下稳定查询：
+`(sender_id, recipient_id, created_at, message_id)` 服务于双向单聊查询：
 
 ```sql
 SELECT *
 FROM messages
-WHERE recipient_id = ?
+WHERE (sender_id = ? AND recipient_id = ?)
+   OR (sender_id = ? AND recipient_id = ?)
 ORDER BY created_at, message_id;
 ```
 
-`recipient_id` 负责缩小到某个用户收到的消息，`created_at` 用于时间排序，
-`message_id` 在创建时间相同时提供稳定次序。主键和唯一约束已经有对应索引，因此没有
-再为 `message_id` 或 `(sender_id, client_message_id)` 创建重复索引。
+两个方向都对 `sender_id` 和 `recipient_id` 使用等值条件，可以复用同一个索引；
+`created_at` 用于时间排序，`message_id` 在创建时间相同时提供稳定次序。主键和唯一
+约束已经有对应索引，因此不创建重复索引。
 
 索引会占用磁盘空间，并增加插入、更新和删除的维护成本。因此当前不提前为尚不存在的
 查询添加发送者索引或正文索引。

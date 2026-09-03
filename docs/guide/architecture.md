@@ -5,7 +5,7 @@
 | 模块 | 职责 |
 | --- | --- |
 | `domain` | 表达消息领域概念、不变量和领域异常 |
-| `application` | 表达发送消息用例、命令、结果及所需端口 |
+| `application` | 表达发送、历史查询、命令、结果及所需端口 |
 | `adapters` | 使用内存、SQLAlchemy 和 WebSocket 实现应用端口及连接管理 |
 | `entrypoints` | 处理 FastAPI 路由、Pydantic 协议模型和错误映射 |
 | `bootstrap.py` | 创建具体对象、注入依赖并管理应用生命周期 |
@@ -43,8 +43,8 @@ app = create_app()
 ```
 
 `src/entrypoints/` 表示外部请求进入应用核心的输入适配器，并不是另一个可执行程序入口。
-它负责将 WebSocket JSON 转换为 `SendMessageCommand`，再将应用结果转换为 ACK 或
-错误事件。
+它负责将 WebSocket JSON 转换为 `SendMessageCommand`，将应用结果转换为 ACK 或
+错误事件，并把 HTTP 历史参数和不透明游标转换为应用查询。
 
 ## 组合根
 
@@ -56,6 +56,7 @@ SQLite Engine / Session Factory
 SqlAlchemyMessageUnitOfWorkFactory
 WebSocketMessageNotifier
 SendMessageService
+GetMessageHistoryService
 FastAPI
 ```
 
