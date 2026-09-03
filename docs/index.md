@@ -26,10 +26,9 @@ features:
 
 ## 当前阶段
 
-项目已经完成单进程 WebSocket 私聊的 v0.1 和 `M3 分层内核 v0.2`，正在学习
-`M4 持久化聊天 v0.3`。当前已通过 Repository 与 Unit of Work 将异步 SQLAlchemy
-接入发送消息用例，并使用 Alembic 管理数据库结构版本；应用启动不再隐式建表。
-当前进一步提供稳定游标历史查询、持久化离线恢复和数据库约束保护的消息幂等。
+项目已经完成单进程 WebSocket 私聊 v0.1、`M3 分层内核 v0.2` 和
+`M4 持久化聊天 v0.3`。当前通过 Repository 与 Unit of Work 使用异步 SQLAlchemy，
+由 Alembic 管理数据库结构，并提供稳定游标历史查询、离线主动恢复和消息幂等。
 每个并发 Task 使用独立 AsyncSession，数据库等待不会阻塞其他连接的事件循环调度。
 
 ## 文档导航
