@@ -1,7 +1,9 @@
 """SQLAlchemy 消息 Repository 与 Unit of Work 集成测试。"""
 
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 from uuid import UUID
 
 import pytest
@@ -17,7 +19,7 @@ from src.adapters.database import (
     createSqliteEngine,
 )
 from src.adapters.database.migrationConfig import createMigrationConfig
-from src.application import MessageStorageError
+from src.application import MessageStorageConflictError
 from src.domain import (
     ChatMessage,
     ClientMessageId,
@@ -88,7 +90,7 @@ def test_commit_failure_is_translated_and_session_remains_usable(
         unitOfWork.messages.add(firstMessage)
         unitOfWork.commit()
 
-    with pytest.raises(MessageStorageError, match="消息事务提交失败"):
+    with pytest.raises(MessageStorageConflictError, match="消息幂等键或约束冲突"):
         with unitOfWorkFactory() as unitOfWork:
             unitOfWork.messages.add(duplicateMessage)
             unitOfWork.commit()
@@ -105,3 +107,47 @@ def test_commit_failure_is_translated_and_session_remains_usable(
         unitOfWork.commit()
 
     assert countMessages(sessionFactory) == 2
+
+
+def test_concurrent_duplicate_commits_create_only_one_message(
+    sessionFactory: sessionmaker[Session],
+) -> None:
+    """并发写入相同幂等键时数据库唯一约束必须只接受一条。"""
+    clientMessageId = UUID("60000000-0000-0000-0000-000000000006")
+    messages = (
+        createMessage(
+            messageId=UUID("70000000-0000-0000-0000-000000000007"),
+            clientMessageId=clientMessageId,
+        ),
+        createMessage(
+            messageId=UUID("80000000-0000-0000-0000-000000000008"),
+            clientMessageId=clientMessageId,
+        ),
+    )
+    unitOfWorkFactory = SqlAlchemyMessageUnitOfWorkFactory(sessionFactory)
+    startBarrier = Barrier(2)
+
+    def commitMessage(message: ChatMessage) -> str:
+        """等待两个线程就绪后提交一条候选消息。"""
+        startBarrier.wait()
+        try:
+            with unitOfWorkFactory() as unitOfWork:
+                unitOfWork.messages.add(message)
+                unitOfWork.commit()
+        except MessageStorageConflictError:
+            return "conflict"
+        return "committed"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(commitMessage, messages))
+
+    assert sorted(results) == ["committed", "conflict"]
+    assert countMessages(sessionFactory) == 1
+
+    with unitOfWorkFactory() as unitOfWork:
+        persistedMessage = unitOfWork.messages.getByClientMessageId(
+            UserId("duplicate-sender"),
+            ClientMessageId(clientMessageId),
+        )
+
+    assert persistedMessage in messages

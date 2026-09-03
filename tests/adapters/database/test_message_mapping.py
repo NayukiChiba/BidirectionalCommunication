@@ -77,9 +77,9 @@ def test_message_table_has_explained_constraints_and_index(tmp_path) -> None:
         indexes = inspector.get_indexes("messages")
         assert {(index["name"], tuple(index["column_names"])) for index in indexes} == {
             (
-                "ix_messages_recipient_created_message",
-                ("recipient_id", "created_at", "message_id"),
-            )
+                "ix_messages_sender_recipient_created_message",
+                ("sender_id", "recipient_id", "created_at", "message_id"),
+            ),
         }
 
         checkNames = {

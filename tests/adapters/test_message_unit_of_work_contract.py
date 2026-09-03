@@ -2,8 +2,9 @@
 
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from alembic import command
@@ -19,8 +20,14 @@ from src.adapters.database import (
     toDomainMessage,
 )
 from src.adapters.database.migrationConfig import createMigrationConfig
-from src.application import MessageUnitOfWorkFactory
-from src.domain import ChatMessage, ClientMessageId, MessageContent, UserId
+from src.application import MessageCursor, MessageUnitOfWorkFactory
+from src.domain import (
+    ChatMessage,
+    ClientMessageId,
+    MessageContent,
+    MessageId,
+    UserId,
+)
 from src.domain import create_chat_message as createChatMessage
 
 
@@ -63,6 +70,24 @@ def createMessage(content: str = "契约测试消息") -> ChatMessage:
         sender_id=UserId("contract-sender"),
         recipient_id=UserId("contract-recipient"),
         content=MessageContent(content),
+    )
+
+
+def createFixedMessage(
+    *,
+    messageSequence: int,
+    senderId: str,
+    recipientId: str,
+    createdAt: datetime,
+) -> ChatMessage:
+    """创建具有固定排序字段的共同契约消息。"""
+    return ChatMessage(
+        message_id=MessageId(UUID(int=messageSequence)),
+        client_message_id=ClientMessageId(UUID(int=messageSequence + 100)),
+        sender_id=UserId(senderId),
+        recipient_id=UserId(recipientId),
+        content=MessageContent(f"message-{messageSequence}"),
+        created_at=createdAt,
     )
 
 
@@ -110,3 +135,87 @@ def test_exception_rolls_back_message(
             raise RuntimeError("模拟用例异常")
 
     assert unitOfWorkBackend.loadMessages() == ()
+
+
+def test_get_by_sender_and_client_message_id(
+    unitOfWorkBackend: UnitOfWorkBackend,
+) -> None:
+    """两种 Repository 都应按完整幂等键返回原消息。"""
+    message = createMessage()
+    with unitOfWorkBackend.factory() as unitOfWork:
+        unitOfWork.messages.add(message)
+        unitOfWork.commit()
+
+    with unitOfWorkBackend.factory() as unitOfWork:
+        foundMessage = unitOfWork.messages.getByClientMessageId(
+            message.sender_id,
+            message.client_message_id,
+        )
+        missingMessage = unitOfWork.messages.getByClientMessageId(
+            UserId("another-sender"),
+            message.client_message_id,
+        )
+
+    assert foundMessage == message
+    assert missingMessage is None
+
+
+def test_conversation_cursor_is_stable_for_same_timestamp(
+    unitOfWorkBackend: UnitOfWorkBackend,
+) -> None:
+    """两种 Repository 都应使用消息 ID 决胜相同创建时间。"""
+    createdAt = datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc)
+    messages = (
+        createFixedMessage(
+            messageSequence=3,
+            senderId="user-a",
+            recipientId="user-b",
+            createdAt=createdAt,
+        ),
+        createFixedMessage(
+            messageSequence=1,
+            senderId="user-b",
+            recipientId="user-a",
+            createdAt=createdAt,
+        ),
+        createFixedMessage(
+            messageSequence=2,
+            senderId="user-a",
+            recipientId="user-b",
+            createdAt=createdAt,
+        ),
+        createFixedMessage(
+            messageSequence=4,
+            senderId="user-a",
+            recipientId="unrelated-user",
+            createdAt=createdAt,
+        ),
+    )
+    with unitOfWorkBackend.factory() as unitOfWork:
+        for message in messages:
+            unitOfWork.messages.add(message)
+        unitOfWork.commit()
+
+    with unitOfWorkBackend.factory() as unitOfWork:
+        firstPage = unitOfWork.messages.listConversation(
+            UserId("user-a"),
+            UserId("user-b"),
+            cursor=None,
+            limit=2,
+        )
+        secondPage = unitOfWork.messages.listConversation(
+            UserId("user-a"),
+            UserId("user-b"),
+            cursor=MessageCursor.fromMessage(firstPage[-1]),
+            limit=2,
+        )
+        emptyPage = unitOfWork.messages.listConversation(
+            UserId("user-a"),
+            UserId("user-b"),
+            cursor=MessageCursor.fromMessage(secondPage[-1]),
+            limit=2,
+        )
+
+    assert [message.message_id.value.int for message in firstPage] == [1, 2]
+    assert [message.message_id.value.int for message in secondPage] == [3]
+    assert emptyPage == ()

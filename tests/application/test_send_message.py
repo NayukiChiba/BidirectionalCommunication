@@ -2,9 +2,9 @@
 
 import ast
 import inspect
-from datetime import timezone
+from datetime import datetime, timezone
 from types import TracebackType
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -14,12 +14,19 @@ import src.application.ports as port_module
 import src.application.sendMessage as service_module
 from src.application import (
     DeliveryOutcome,
+    MessageStorageConflictError,
     MessageStorageError,
     SendMessageCommand,
     SendMessageService,
     SendMessageStatus,
 )
-from src.domain import ChatMessage
+from src.domain import (
+    ChatMessage,
+    ClientMessageId,
+    MessageContent,
+    MessageId,
+    UserId,
+)
 
 
 class FakeMessageRepository:
@@ -28,10 +35,11 @@ class FakeMessageRepository:
     def __init__(
         self,
         events: list[str],
+        messages: list[ChatMessage],
         *,
         storageError: BaseException | None = None,
     ) -> None:
-        self.messages: list[ChatMessage] = []
+        self.messages = messages
         self._events = events
         self._storageError = storageError
 
@@ -42,6 +50,23 @@ class FakeMessageRepository:
             raise self._storageError
         self.messages.append(message)
 
+    def getByClientMessageId(
+        self,
+        senderId: UserId,
+        clientMessageId: ClientMessageId,
+    ) -> ChatMessage | None:
+        """记录幂等查询并返回已经保存的原消息。"""
+        self._events.append("get-by-client-id")
+        return next(
+            (
+                message
+                for message in self.messages
+                if message.sender_id == senderId
+                and message.client_message_id == clientMessageId
+            ),
+            None,
+        )
+
 
 class FakeMessageUnitOfWork:
     """记录事务生命周期并可模拟提交失败。"""
@@ -49,13 +74,19 @@ class FakeMessageUnitOfWork:
     def __init__(
         self,
         events: list[str],
+        persistedMessages: list[ChatMessage],
         *,
         storageError: BaseException | None = None,
         commitError: MessageStorageError | None = None,
     ) -> None:
         self._events = events
         self._commitError = commitError
-        self.messages = FakeMessageRepository(events, storageError=storageError)
+        self.messages = FakeMessageRepository(
+            events,
+            persistedMessages,
+            storageError=storageError,
+        )
+        self._snapshot = list(persistedMessages)
         self.committed = False
         self.rolledBack = False
 
@@ -85,6 +116,7 @@ class FakeMessageUnitOfWork:
     def rollback(self) -> None:
         """记录回滚。"""
         self._events.append("rollback")
+        self.messages.messages[:] = self._snapshot
         self.rolledBack = True
 
 
@@ -101,11 +133,13 @@ class FakeMessageUnitOfWorkFactory:
         self._storageError = storageError
         self._commitError = commitError
         self.createdUnits: list[FakeMessageUnitOfWork] = []
+        self.persistedMessages: list[ChatMessage] = []
 
     def __call__(self) -> FakeMessageUnitOfWork:
         """创建并记录工作单元。"""
         unitOfWork = FakeMessageUnitOfWork(
             self.events,
+            self.persistedMessages,
             storageError=self._storageError,
             commitError=self._commitError,
         )
@@ -133,13 +167,14 @@ def makeCommand(
     senderId: str = "user-a",
     recipientId: str = "user-b",
     content: str = "Hello",
+    clientMessageId: UUID | None = None,
 ) -> SendMessageCommand:
     """创建具有合法默认值的应用命令。"""
     return SendMessageCommand(
         sender_id=senderId,
         recipient_id=recipientId,
         content=content,
-        client_message_id=uuid4(),
+        client_message_id=(clientMessageId if clientMessageId is not None else uuid4()),
     )
 
 
@@ -162,7 +197,14 @@ async def test_send_message_commits_before_delivering_domain_message() -> None:
     assert unitOfWork.committed is True
     assert unitOfWork.rolledBack is False
     assert notifier.messages == [result.message]
-    assert unitOfWorkFactory.events == ["enter", "add", "commit", "exit", "deliver"]
+    assert unitOfWorkFactory.events == [
+        "enter",
+        "get-by-client-id",
+        "add",
+        "commit",
+        "exit",
+        "deliver",
+    ]
 
 
 @pytest.mark.asyncio
@@ -216,7 +258,13 @@ async def test_send_message_rolls_back_and_stops_when_repository_fails() -> None
     assert unitOfWork.committed is False
     assert unitOfWork.rolledBack is True
     assert notifier.messages == []
-    assert unitOfWorkFactory.events == ["enter", "add", "rollback", "exit"]
+    assert unitOfWorkFactory.events == [
+        "enter",
+        "get-by-client-id",
+        "add",
+        "rollback",
+        "exit",
+    ]
 
 
 @pytest.mark.asyncio
@@ -237,6 +285,7 @@ async def test_send_message_rolls_back_and_stops_when_commit_fails() -> None:
     assert notifier.messages == []
     assert unitOfWorkFactory.events == [
         "enter",
+        "get-by-client-id",
         "add",
         "commit",
         "rollback",
@@ -288,6 +337,63 @@ async def test_send_message_allows_same_sender_and_recipient() -> None:
     assert result.status is SendMessageStatus.DELIVERED
     assert result.message is not None
     assert result.message.sender_id == result.message.recipient_id
+
+
+@pytest.mark.asyncio
+async def test_duplicate_command_returns_original_server_message() -> None:
+    """重复客户端消息 ID 应返回同一条已提交消息。"""
+    unitOfWorkFactory = FakeMessageUnitOfWorkFactory()
+    notifier = FakeMessageNotifier(DeliveryOutcome.DELIVERED, unitOfWorkFactory.events)
+    service = SendMessageService(unitOfWorkFactory, notifier)
+    command = makeCommand()
+
+    firstResult = await service.send(command)
+    secondResult = await service.send(command)
+
+    assert firstResult.status is SendMessageStatus.DELIVERED
+    assert secondResult.status is SendMessageStatus.DELIVERED
+    assert secondResult.message is firstResult.message
+    assert unitOfWorkFactory.persistedMessages == [firstResult.message]
+    assert notifier.messages == [firstResult.message, firstResult.message]
+
+
+@pytest.mark.asyncio
+async def test_concurrent_conflict_recovers_original_message() -> None:
+    """唯一约束竞态应通过新工作单元读取并返回原消息。"""
+    clientMessageId = uuid4()
+    originalMessage = ChatMessage(
+        message_id=MessageId(uuid4()),
+        client_message_id=ClientMessageId(clientMessageId),
+        sender_id=UserId("user-a"),
+        recipient_id=UserId("user-b"),
+        content=MessageContent("Hello"),
+        created_at=datetime.now(timezone.utc),
+    )
+    events: list[str] = []
+    unitOfWorks = [
+        FakeMessageUnitOfWork(
+            events,
+            [],
+            commitError=MessageStorageConflictError("模拟并发唯一约束冲突"),
+        ),
+        FakeMessageUnitOfWork(events, [originalMessage]),
+    ]
+
+    class ConflictRecoveryFactory:
+        """依次返回冲突工作单元和恢复查询工作单元。"""
+
+        def __call__(self) -> FakeMessageUnitOfWork:
+            """返回下一个预设工作单元。"""
+            return unitOfWorks.pop(0)
+
+    notifier = FakeMessageNotifier(DeliveryOutcome.DELIVERED, events)
+    service = SendMessageService(ConflictRecoveryFactory(), notifier)
+
+    result = await service.send(makeCommand(clientMessageId=clientMessageId))
+
+    assert result.status is SendMessageStatus.DELIVERED
+    assert result.message is originalMessage
+    assert notifier.messages == [originalMessage]
 
 
 def test_application_modules_do_not_import_external_frameworks() -> None:

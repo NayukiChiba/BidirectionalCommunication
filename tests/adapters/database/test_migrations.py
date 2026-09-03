@@ -10,7 +10,7 @@ from src.adapters.database import createSqliteEngine
 from src.adapters.database.migrationConfig import createMigrationConfig
 from src.config import PROJECT_ROOT
 
-INITIAL_REVISION = "e5f06ff274b9"
+HEAD_REVISION = "b5db92390df6"
 
 
 def getCurrentRevision(databasePath: Path) -> str | None:
@@ -40,7 +40,7 @@ def test_upgrade_empty_database_to_head(tmp_path: Path) -> None:
     command.upgrade(migrationConfig, "head")
 
     assert getTableNames(databasePath) == {"alembic_version", "messages"}
-    assert getCurrentRevision(databasePath) == INITIAL_REVISION
+    assert getCurrentRevision(databasePath) == HEAD_REVISION
 
 
 def test_downgrade_then_upgrade_restores_target_schema(tmp_path: Path) -> None:
@@ -57,7 +57,7 @@ def test_downgrade_then_upgrade_restores_target_schema(tmp_path: Path) -> None:
     command.upgrade(migrationConfig, "head")
 
     assert getTableNames(databasePath) == {"alembic_version", "messages"}
-    assert getCurrentRevision(databasePath) == INITIAL_REVISION
+    assert getCurrentRevision(databasePath) == HEAD_REVISION
 
 
 def test_migration_history_matches_orm_metadata(tmp_path: Path) -> None:

@@ -117,6 +117,7 @@ def test_concrete_dependencies_are_only_created_in_bootstrap() -> None:
     """生产代码只能在组合根中实例化具体依赖。"""
     concrete_names = {
         "ConnectionManager",
+        "GetMessageHistoryService",
         "SendMessageService",
         "SqlAlchemyMessageUnitOfWorkFactory",
         "WebSocketMessageNotifier",
