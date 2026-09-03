@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "需要补发 Release 的现有标签"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -12,13 +18,13 @@ jobs:
   release:
     name: 创建 Release
     runs-on: ubuntu-latest
+    env:
+      TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
     steps:
-      - name: 检出标签代码
+      - name: 检出发布配置
         uses: actions/checkout@v6
 
       - name: 检查发布说明
-        env:
-          TAG_NAME: ${{ github.ref_name }}
         run: |
           changelog_path="changelogs/${TAG_NAME}.md"
           if [[ ! -f "${changelog_path}" ]]; then
@@ -29,7 +35,6 @@ jobs:
       - name: 创建 GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ github.ref_name }}
         run: |
           gh release create "${TAG_NAME}" \
             --repo "${GITHUB_REPOSITORY}" \
