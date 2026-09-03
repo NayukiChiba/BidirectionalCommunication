@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from uuid import UUID
 
-from domain import ChatMessage
+from ..domain import ChatMessage
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,6 +1,6 @@
 """消息领域公开接口。"""
 
-from domain.exceptions import (
+from .exceptions import (
     DomainError,
     InvalidChatMessage,
     InvalidClientMessageId,
@@ -9,7 +9,7 @@ from domain.exceptions import (
     InvalidMessageId,
     InvalidUserId,
 )
-from domain.message import (
+from .message import (
     ChatMessage,
     ClientMessageId,
     MessageContent,

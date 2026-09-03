@@ -1,6 +1,6 @@
 """消息存储端口的内存适配器。"""
 
-from domain import ChatMessage, MessageId
+from ..domain import ChatMessage, MessageId
 
 
 class InMemoryMessageRepository:

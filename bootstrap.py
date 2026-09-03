@@ -5,13 +5,13 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 
-from adapters import (
+from src.adapters import (
     ConnectionManager,
     InMemoryMessageRepository,
     WebSocketMessageNotifier,
 )
-from application import SendMessageService
-from entrypoints import create_router
+from src.application import SendMessageService
+from src.entrypoints import create_router
 
 
 def create_app() -> FastAPI:

@@ -1,20 +1,20 @@
 """发送消息应用用例。"""
 
-from application.exceptions import MessageStorageError
-from application.models import (
-    DeliveryOutcome,
-    SendMessageCommand,
-    SendMessageResult,
-    SendMessageStatus,
-)
-from application.ports import MessageNotifier, MessageRepository
-from domain import (
+from ..domain import (
     ClientMessageId,
     DomainError,
     MessageContent,
     UserId,
     create_chat_message,
 )
+from .exceptions import MessageStorageError
+from .models import (
+    DeliveryOutcome,
+    SendMessageCommand,
+    SendMessageResult,
+    SendMessageStatus,
+)
+from .ports import MessageNotifier, MessageRepository
 
 
 class SendMessageService:

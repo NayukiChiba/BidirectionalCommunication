@@ -2,9 +2,9 @@
 
 from typing import Protocol
 
-from adapters.webSocketConnectionManager import ConnectionSendOutcome
-from application import DeliveryOutcome
-from domain import ChatMessage
+from ..application import DeliveryOutcome
+from ..domain import ChatMessage
+from .webSocketConnectionManager import ConnectionSendOutcome
 
 
 class JsonConnectionSender(Protocol):

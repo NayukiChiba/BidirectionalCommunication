@@ -2,8 +2,8 @@
 
 from typing import Protocol
 
-from application.models import DeliveryOutcome
-from domain import ChatMessage
+from ..domain import ChatMessage
+from .models import DeliveryOutcome
 
 
 class MessageRepository(Protocol):
