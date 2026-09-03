@@ -41,7 +41,7 @@ def test_source_packages_only_use_absolute_imports() -> None:
 
 def python_files(package_name: str) -> list[Path]:
     """返回指定项目包中的全部 Python 文件。"""
-    return sorted((PROJECT_ROOT / "src" / package_name).glob("*.py"))
+    return sorted((PROJECT_ROOT / "src" / package_name).rglob("*.py"))
 
 
 def assert_packages_not_imported(
