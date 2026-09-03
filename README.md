@@ -6,6 +6,7 @@
 
 ```bash
 uv sync --dev
+uv run alembic upgrade head
 uv run uvicorn main:app --reload
 ```
 
@@ -57,6 +58,7 @@ src/
 bootstrap.py        唯一组合根，创建并注入具体依赖
 main.py             唯一程序启动入口
 examples/           可独立运行的学习示例
+migrations/         Alembic 数据库迁移环境和版本历史
 tests/              领域、应用、适配器、架构和外部行为测试
 docs/               VitePress 项目文档
 ```
@@ -94,6 +96,6 @@ main → bootstrap → entrypoints / adapters → application → domain
 - 没有身份认证，客户端可以自行指定 `user_id`。
 - 进程退出后在线状态会丢失，消息会保存在 `data/chat.sqlite3`。
 - 当前仍使用同步 Session，数据库访问将在 Issue 16 迁移为异步实现。
-- Alembic 尚未接入，应用启动时暂时使用 ORM 元数据建表。
+- 应用不会自动迁移数据库，部署或拉取新版本后需要执行 `alembic upgrade head`。
 - 没有离线投递、已读回执、重试或跨实例通信。
 - ACK 只表示服务端已向目标 WebSocket 执行发送，不表示用户已经阅读。

@@ -107,8 +107,7 @@ UnitOfWork.commit
 
 - 当前使用同步 Session，因此 WebSocket 处理期间的数据库访问会占用事件循环线程；
   Issue 16 会在理解事务后迁移到 `AsyncSession`。
-- 在 Alembic 接入前，应用 lifespan 暂时调用 `metadata.create_all()` 建表；Issue 14
-  会改成显式迁移。
+- 数据库结构由 Alembic 显式迁移，应用 lifespan 不创建或升级生产表。
 - 当前只保存消息，还没有历史、离线拉取和幂等响应；这些属于 Issue 15。
 - `(sender_id, client_message_id)` 唯一约束已保护数据库，但重复请求目前返回存储失败，
   尚未实现查询原消息并返回相同结果的幂等语义。

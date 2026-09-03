@@ -112,8 +112,8 @@ uv run python -m examples.sqlAlchemyExperiment \
 4. 另一条消息在 `flush()` 后执行 `rollback()`。
 5. 再创建一个 Session，确认回滚消息不存在。
 
-`DatabaseBase.metadata.create_all()` 当前临时用于应用启动、学习实验和隔离测试。正式
-数据库结构演进将在 Issue 14 中交给 Alembic，并从应用启动流程移除隐式建表。
+数据库结构已经交给 Alembic 版本化管理。应用、学习实验和自动化测试都必须先执行
+迁移，不再调用 `DatabaseBase.metadata.create_all()`。
 
 ## 为什么先使用同步 Session
 

@@ -18,6 +18,7 @@ export default defineConfig({
       { text: "消息协议", link: "/guide/message-protocol" },
       { text: "架构", link: "/guide/architecture" },
       { text: "数据库", link: "/guide/database-foundations" },
+      { text: "迁移", link: "/guide/database-migrations" },
       { text: "工作单元", link: "/guide/repository-unit-of-work" },
       { text: "领域模型", link: "/domain/message-model" },
       {
@@ -34,6 +35,7 @@ export default defineConfig({
           { text: "WebSocket 消息协议", link: "/guide/message-protocol" },
           { text: "架构与组合根", link: "/guide/architecture" },
           { text: "关系建模与 SQLAlchemy", link: "/guide/database-foundations" },
+          { text: "Alembic 数据库迁移", link: "/guide/database-migrations" },
           { text: "Repository 与 Unit of Work", link: "/guide/repository-unit-of-work" },
         ],
       },

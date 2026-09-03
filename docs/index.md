@@ -28,7 +28,7 @@ features:
 
 项目已经完成单进程 WebSocket 私聊的 v0.1 和 `M3 分层内核 v0.2`，正在学习
 `M4 持久化聊天 v0.3`。当前已通过 Repository 与 Unit of Work 将同步 SQLAlchemy
-接入发送消息用例，并保持 Application 和 Domain 不依赖数据库框架。
+接入发送消息用例，并使用 Alembic 管理数据库结构版本；应用启动不再隐式建表。
 
 ## 文档导航
 
@@ -36,5 +36,6 @@ features:
 - [WebSocket 消息协议](/guide/message-protocol)：连接方式、消息结构和错误响应。
 - [架构与组合根](/guide/architecture)：各层职责、依赖方向和应用组装。
 - [关系建模与 SQLAlchemy](/guide/database-foundations)：消息表、索引、ORM 映射和同步事务。
+- [Alembic 数据库迁移](/guide/database-migrations)：版本历史、升级降级和开发部署流程。
 - [Repository 与 Unit of Work](/guide/repository-unit-of-work)：持久化端口、事务边界和失败恢复。
 - [消息领域模型](/domain/message-model)：领域概念、不变量和传输转换边界。

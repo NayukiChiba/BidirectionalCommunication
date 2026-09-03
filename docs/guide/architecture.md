@@ -61,6 +61,7 @@ FastAPI
 
 具体依赖在组合根中通过构造参数注入。Engine、Session 工厂和 UoW 工厂保存在
 `app.state`，用于生命周期管理和外部行为测试。业务代码不会通过全局注册表查找依赖。
+Bootstrap 不创建或迁移数据库表；数据库结构必须在启动应用前通过 Alembic 升级。
 
 ## WebSocket 的两个方向
 
