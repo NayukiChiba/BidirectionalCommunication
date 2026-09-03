@@ -33,14 +33,14 @@ class MessageUnitOfWork(Protocol):
 
 ## 为什么注入工作单元工厂
 
-`SendMessageService` 是长生命周期对象，多个 WebSocket 请求可能同时调用它。同步
-Session 是有状态事务对象，不能让所有请求共享同一个实例。因此组合根注入
+`SendMessageService` 是长生命周期对象，多个 WebSocket 请求可能同时调用它。
+AsyncSession 是有状态事务对象，不能让所有 Task 共享同一个实例。因此组合根注入
 `MessageUnitOfWorkFactory`，每次 `send()` 只创建一个独立工作单元：
 
 ```text
 SendMessageService.send
         │
-        ├── unitOfWorkFactory() ── 新 UoW / 新 Session
+        ├── unitOfWorkFactory() ── 新 UoW / 新 AsyncSession
         │          │
         │          ├── messages.add(message)
         │          └── commit()
@@ -60,11 +60,11 @@ SendMessageService.send
 Repository.add
     ↓
 UnitOfWork.commit
-    ↓ 成功后退出并关闭 Session
+    ↓ 成功后退出并关闭 AsyncSession
 实时推送
 ```
 
-只有显式 `commit()` 会保留数据。Repository 只调用 `Session.add()`，不提交事务；
+只有显式 `await commit()` 会保留数据。Repository 只调用 `AsyncSession.add()`，不提交；
 否则一个用例涉及多个 Repository 时，第一个 Repository 可能已经提交，后面的操作却
 失败，无法作为整体回滚。
 
@@ -93,22 +93,20 @@ UnitOfWork.commit
 
 ### SQLAlchemy 实现
 
-`SqlAlchemyMessageUnitOfWorkFactory` 保存 Session 工厂，但不保存 Session。每次调用
-创建新的 `SqlAlchemyMessageUnitOfWork`：
+`AsyncSqlAlchemyMessageUnitOfWorkFactory` 保存 AsyncSession 工厂，但不保存 Session。
+每次调用创建新的 `AsyncSqlAlchemyMessageUnitOfWork`：
 
-1. `__enter__()` 创建同步 Session 和 `SqlAlchemyMessageRepository`。
-2. Repository 把 `ChatMessage` 转换为 `MessageRecord` 并加入 Session。
-3. `commit()` 提交；数据库异常转换为应用层存储异常。
-4. `__exit__()` 默认回滚剩余事务，并始终关闭 Session。
+1. `__aenter__()` 创建独立 AsyncSession 和 `AsyncSqlAlchemyMessageRepository`。
+2. Repository 把 `ChatMessage` 转换为 `MessageRecord` 并加入 AsyncSession。
+3. `await commit()` 提交；数据库异常转换为应用层存储异常。
+4. `__aexit__()` 默认异步回滚剩余事务，并始终关闭 AsyncSession。
 
-组合根创建 Engine 和 Session 工厂，应用关闭时释放 Engine。为支持 FastAPI 测试和
-工作线程使用文件 SQLite，连接显式设置 `check_same_thread=False`；这不代表 Session
-可以跨线程共享，每个 UoW 仍然拥有独立 Session。
+组合根创建 AsyncEngine 和 AsyncSession 工厂，应用关闭时执行
+`await engine.dispose()`。每个 UoW 和并发 Task 都拥有独立 AsyncSession。
 
 ## 当前过渡边界
 
-- 当前使用同步 Session，因此 WebSocket 处理期间的数据库访问会占用事件循环线程；
-  Issue 16 会在理解事务后迁移到 `AsyncSession`。
+- 运行时数据库访问已使用 AsyncSession，每个用例和 Task 持有独立实例。
 - 数据库结构由 Alembic 显式迁移，应用 lifespan 不创建或升级生产表。
 - 历史和离线恢复采用正向游标主动拉取，不建立独立离线队列。
 - 重复幂等请求返回原消息，但 WebSocket 实时事件仍可能重复投递。
@@ -117,6 +115,6 @@ UnitOfWork.commit
 
 - 应用单元测试使用假 UoW，验证保存、提交、回滚、提交失败和推送顺序。
 - 共同契约测试对内存和 SQLAlchemy 两种实现执行相同的提交与回滚断言。
-- SQLAlchemy 集成测试验证唯一约束导致的提交失败会被转换，失败 Session 被释放，
+- SQLAlchemy 集成测试验证唯一约束导致的提交失败会被转换，失败 AsyncSession 被释放，
   后续新 UoW 仍可正常提交。
 - WebSocket 外部行为测试为每个测试创建独立 SQLite 文件，验证真实组合链路。

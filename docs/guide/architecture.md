@@ -6,7 +6,7 @@
 | --- | --- |
 | `domain` | 表达消息领域概念、不变量和领域异常 |
 | `application` | 表达发送、历史查询、命令、结果及所需端口 |
-| `adapters` | 使用内存、SQLAlchemy 和 WebSocket 实现应用端口及连接管理 |
+| `adapters` | 使用内存、异步 SQLAlchemy 和 WebSocket 实现应用端口及连接管理 |
 | `entrypoints` | 处理 FastAPI 路由、Pydantic 协议模型和错误映射 |
 | `bootstrap.py` | 创建具体对象、注入依赖并管理应用生命周期 |
 | `main.py` | 作为唯一启动入口暴露 FastAPI `app` |
@@ -52,15 +52,15 @@ app = create_app()
 
 ```text
 ConnectionManager
-SQLite Engine / Session Factory
-SqlAlchemyMessageUnitOfWorkFactory
+SQLite AsyncEngine / AsyncSession Factory
+AsyncSqlAlchemyMessageUnitOfWorkFactory
 WebSocketMessageNotifier
 SendMessageService
 GetMessageHistoryService
 FastAPI
 ```
 
-具体依赖在组合根中通过构造参数注入。Engine、Session 工厂和 UoW 工厂保存在
+具体依赖在组合根中通过构造参数注入。AsyncEngine、AsyncSession 工厂和 UoW 工厂保存在
 `app.state`，用于生命周期管理和外部行为测试。业务代码不会通过全局注册表查找依赖。
 Bootstrap 不创建或迁移数据库表；数据库结构必须在启动应用前通过 Alembic 升级。
 

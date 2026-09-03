@@ -54,7 +54,7 @@ npm run dev
 src/
 ├── domain/         消息领域对象、不变量和领域异常
 ├── application/    发送消息用例、命令、结果和端口
-├── adapters/       内存、WebSocket 和同步数据库适配器
+├── adapters/       内存、WebSocket 和异步数据库适配器
 └── entrypoints/    FastAPI 路由、Pydantic 协议模型和错误映射
 bootstrap.py        唯一组合根，创建并注入具体依赖
 main.py             唯一程序启动入口
@@ -96,7 +96,7 @@ main → bootstrap → entrypoints / adapters → application → domain
 - 只支持单进程在线连接和单文件 SQLite 消息存储。
 - 没有身份认证，客户端可以自行指定 `user_id`。
 - 进程退出后在线状态会丢失，消息会保存在 `data/chat.sqlite3`。
-- 当前仍使用同步 Session，数据库访问将在 Issue 16 迁移为异步实现。
+- 应用运行时使用 AsyncSession 和 aiosqlite；Alembic 运维命令仍使用同步连接。
 - 应用不会自动迁移数据库，部署或拉取新版本后需要执行 `alembic upgrade head`。
 - 离线消息需要客户端主动拉取，尚未实现服务端自动补发。
 - 没有送达状态、已读回执或跨实例通信。
