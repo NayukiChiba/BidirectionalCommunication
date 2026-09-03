@@ -29,7 +29,7 @@ class StubMessageRepository:
         self.requestedLimit: int | None = None
         self.requestedCursor: MessageCursor | None = None
 
-    def listConversation(
+    async def listConversation(
         self,
         userId: UserId,
         peerId: UserId,
@@ -49,10 +49,10 @@ class StubMessageUnitOfWork:
     def __init__(self, repository: StubMessageRepository) -> None:
         self.messages = repository
 
-    def __enter__(self) -> "StubMessageUnitOfWork":
+    async def __aenter__(self) -> "StubMessageUnitOfWork":
         return self
 
-    def __exit__(
+    async def __aexit__(
         self,
         exceptionType: type[BaseException] | None,
         exception: BaseException | None,
@@ -60,10 +60,10 @@ class StubMessageUnitOfWork:
     ) -> None:
         return None
 
-    def commit(self) -> None:
+    async def commit(self) -> None:
         """只读测试不会提交。"""
 
-    def rollback(self) -> None:
+    async def rollback(self) -> None:
         """只读测试无需维护状态。"""
 
 
@@ -91,14 +91,15 @@ def createMessage(sequence: int) -> ChatMessage:
     )
 
 
-def test_history_service_requests_one_extra_message_for_has_more() -> None:
+@pytest.mark.asyncio
+async def test_history_service_requests_one_extra_message_for_has_more() -> None:
     """服务应多取一条判断后续页并返回最后可见消息游标。"""
     messages = tuple(createMessage(sequence) for sequence in range(1, 4))
     repository = StubMessageRepository(messages)
     unitOfWorkFactory = StubMessageUnitOfWorkFactory(repository)
     service = GetMessageHistoryService(unitOfWorkFactory)
 
-    page = service.getPage(
+    page = await service.getPage(
         MessageHistoryQuery(user_id="user-a", peer_id="user-b", limit=2)
     )
 
@@ -109,12 +110,15 @@ def test_history_service_requests_one_extra_message_for_has_more() -> None:
     assert unitOfWorkFactory.createdCount == 1
 
 
-def test_history_service_returns_empty_page() -> None:
+@pytest.mark.asyncio
+async def test_history_service_returns_empty_page() -> None:
     """没有历史时应返回空消息和空下一游标。"""
     repository = StubMessageRepository(())
     service = GetMessageHistoryService(StubMessageUnitOfWorkFactory(repository))
 
-    page = service.getPage(MessageHistoryQuery(user_id="user-a", peer_id="user-b"))
+    page = await service.getPage(
+        MessageHistoryQuery(user_id="user-a", peer_id="user-b")
+    )
 
     assert page.messages == ()
     assert page.next_cursor is None
@@ -122,14 +126,15 @@ def test_history_service_returns_empty_page() -> None:
 
 
 @pytest.mark.parametrize("limit", [0, 101, True, 1.5])
-def test_history_service_rejects_invalid_page_size(limit: object) -> None:
+@pytest.mark.asyncio
+async def test_history_service_rejects_invalid_page_size(limit: object) -> None:
     """分页大小必须是 1 到 100 之间的整数。"""
     repository = StubMessageRepository(())
     unitOfWorkFactory = StubMessageUnitOfWorkFactory(repository)
     service = GetMessageHistoryService(unitOfWorkFactory)
 
     with pytest.raises(InvalidMessageHistoryQuery):
-        service.getPage(
+        await service.getPage(
             MessageHistoryQuery(
                 user_id="user-a",
                 peer_id="user-b",

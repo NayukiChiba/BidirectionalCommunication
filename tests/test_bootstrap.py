@@ -6,9 +6,13 @@ from alembic import command
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import inspect
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from bootstrap import create_app
-from src.adapters.database.migrationConfig import createMigrationConfig
+from src.adapters.database.migrationConfig import (
+    createMigrationConfig,
+    createMigrationEngine,
+)
 
 
 def test_create_app_composes_dependencies_and_routes(tmp_path: Path) -> None:
@@ -19,7 +23,7 @@ def test_create_app_composes_dependencies_and_routes(tmp_path: Path) -> None:
 
     assert isinstance(app, FastAPI)
     assert app.state.connection_manager is not None
-    assert app.state.database_engine is not None
+    assert isinstance(app.state.database_engine, AsyncEngine)
     assert app.state.session_factory is not None
     assert app.state.unit_of_work_factory is not None
     assert app.state.message_notifier is not None
@@ -28,17 +32,26 @@ def test_create_app_composes_dependencies_and_routes(tmp_path: Path) -> None:
     with TestClient(app) as client:
         response = client.get("/health")
         assert response.status_code == 200
-        assert inspect(app.state.database_engine).has_table("messages")
+        inspectionEngine = createMigrationEngine(databasePath)
+        try:
+            assert inspect(inspectionEngine).has_table("messages")
+        finally:
+            inspectionEngine.dispose()
 
 
 def test_app_startup_does_not_create_database_schema(tmp_path: Path) -> None:
     """应用启动不能替代显式 Alembic 迁移。"""
-    app = create_app(databasePath=tmp_path / "unmigrated.sqlite3")
+    databasePath = tmp_path / "unmigrated.sqlite3"
+    app = create_app(databasePath=databasePath)
 
     with TestClient(app) as client:
         assert client.get("/health").status_code == 200
 
-    assert inspect(app.state.database_engine).get_table_names() == []
+    inspectionEngine = createMigrationEngine(databasePath)
+    try:
+        assert inspect(inspectionEngine).get_table_names() == []
+    finally:
+        inspectionEngine.dispose()
 
 
 def test_create_app_returns_independent_compositions(tmp_path: Path) -> None:

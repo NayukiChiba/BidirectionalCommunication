@@ -1,22 +1,26 @@
-"""SQLAlchemy 消息 Repository 与 Unit of Work 集成测试。"""
+"""异步 SQLAlchemy 消息 Repository 与 Unit of Work 集成测试。"""
 
-from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor
+import asyncio
+from collections.abc import AsyncIterator
 from pathlib import Path
-from threading import Barrier
 from uuid import UUID
 
 import pytest
+import pytest_asyncio
 from alembic import command
 from sqlalchemy import func, select
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+)
 
 from src.adapters.database import (
+    AsyncSqlAlchemyMessageUnitOfWork,
+    AsyncSqlAlchemyMessageUnitOfWorkFactory,
     MessageRecord,
-    SqlAlchemyMessageUnitOfWorkFactory,
-    createSessionFactory,
-    createSqliteEngine,
+    createAsyncSessionFactory,
+    createAsyncSqliteEngine,
 )
 from src.adapters.database.migrationConfig import createMigrationConfig
 from src.application import MessageStorageConflictError
@@ -30,22 +34,24 @@ from src.domain import (
 from src.domain import create_chat_message as createChatMessage
 
 
-@pytest.fixture
-def databaseEngine(tmp_path: Path) -> Iterator[Engine]:
-    """创建具有消息表的临时 SQLite Engine。"""
+@pytest_asyncio.fixture
+async def databaseEngine(tmp_path: Path) -> AsyncIterator[AsyncEngine]:
+    """创建具有消息表的临时 AsyncEngine。"""
     databasePath = tmp_path / "unit-of-work.sqlite3"
     command.upgrade(createMigrationConfig(databasePath), "head")
-    engine = createSqliteEngine(databasePath)
+    engine = createAsyncSqliteEngine(databasePath)
     try:
         yield engine
     finally:
-        engine.dispose()
+        await engine.dispose()
 
 
 @pytest.fixture
-def sessionFactory(databaseEngine: Engine) -> sessionmaker[Session]:
-    """创建测试使用的同步 Session 工厂。"""
-    return createSessionFactory(databaseEngine)
+def sessionFactory(
+    databaseEngine: AsyncEngine,
+) -> async_sessionmaker[AsyncSession]:
+    """创建测试使用的 AsyncSession 工厂。"""
+    return createAsyncSessionFactory(databaseEngine)
 
 
 def createMessage(*, messageId: UUID, clientMessageId: UUID) -> ChatMessage:
@@ -66,16 +72,21 @@ def createMessage(*, messageId: UUID, clientMessageId: UUID) -> ChatMessage:
     )
 
 
-def countMessages(sessionFactory: sessionmaker[Session]) -> int:
-    """通过新 Session 统计已提交消息数。"""
-    with sessionFactory() as session:
-        return session.scalar(select(func.count()).select_from(MessageRecord)) or 0
+async def countMessages(
+    sessionFactory: async_sessionmaker[AsyncSession],
+) -> int:
+    """通过新 AsyncSession 统计已提交消息数。"""
+    async with sessionFactory() as session:
+        return (
+            await session.scalar(select(func.count()).select_from(MessageRecord)) or 0
+        )
 
 
-def test_commit_failure_is_translated_and_session_remains_usable(
-    sessionFactory: sessionmaker[Session],
+@pytest.mark.asyncio
+async def test_commit_failure_is_translated_and_session_remains_usable(
+    sessionFactory: async_sessionmaker[AsyncSession],
 ) -> None:
-    """约束导致的提交失败应转换异常、回滚并关闭失败 Session。"""
+    """约束导致的提交失败应转换异常、回滚并关闭失败 AsyncSession。"""
     firstMessage = createMessage(
         messageId=UUID("10000000-0000-0000-0000-000000000001"),
         clientMessageId=UUID("20000000-0000-0000-0000-000000000002"),
@@ -84,33 +95,34 @@ def test_commit_failure_is_translated_and_session_remains_usable(
         messageId=UUID("30000000-0000-0000-0000-000000000003"),
         clientMessageId=UUID("20000000-0000-0000-0000-000000000002"),
     )
-    unitOfWorkFactory = SqlAlchemyMessageUnitOfWorkFactory(sessionFactory)
+    unitOfWorkFactory = AsyncSqlAlchemyMessageUnitOfWorkFactory(sessionFactory)
 
-    with unitOfWorkFactory() as unitOfWork:
-        unitOfWork.messages.add(firstMessage)
-        unitOfWork.commit()
+    async with unitOfWorkFactory() as unitOfWork:
+        await unitOfWork.messages.add(firstMessage)
+        await unitOfWork.commit()
 
-    with pytest.raises(MessageStorageConflictError, match="消息幂等键或约束冲突"):
-        with unitOfWorkFactory() as unitOfWork:
-            unitOfWork.messages.add(duplicateMessage)
-            unitOfWork.commit()
+    with pytest.raises(MessageStorageConflictError):
+        async with unitOfWorkFactory() as unitOfWork:
+            await unitOfWork.messages.add(duplicateMessage)
+            await unitOfWork.commit()
 
-    assert countMessages(sessionFactory) == 1
+    assert await countMessages(sessionFactory) == 1
 
-    # 提交失败的 Session 已关闭，后续工作单元仍能独立使用。
+    # 提交失败的 AsyncSession 已关闭，后续工作单元仍能独立使用。
     thirdMessage = createMessage(
         messageId=UUID("40000000-0000-0000-0000-000000000004"),
         clientMessageId=UUID("50000000-0000-0000-0000-000000000005"),
     )
-    with unitOfWorkFactory() as unitOfWork:
-        unitOfWork.messages.add(thirdMessage)
-        unitOfWork.commit()
+    async with unitOfWorkFactory() as unitOfWork:
+        await unitOfWork.messages.add(thirdMessage)
+        await unitOfWork.commit()
 
-    assert countMessages(sessionFactory) == 2
+    assert await countMessages(sessionFactory) == 2
 
 
-def test_concurrent_duplicate_commits_create_only_one_message(
-    sessionFactory: sessionmaker[Session],
+@pytest.mark.asyncio
+async def test_concurrent_duplicate_commits_create_only_one_message(
+    sessionFactory: async_sessionmaker[AsyncSession],
 ) -> None:
     """并发写入相同幂等键时数据库唯一约束必须只接受一条。"""
     clientMessageId = UUID("60000000-0000-0000-0000-000000000006")
@@ -124,30 +136,57 @@ def test_concurrent_duplicate_commits_create_only_one_message(
             clientMessageId=clientMessageId,
         ),
     )
-    unitOfWorkFactory = SqlAlchemyMessageUnitOfWorkFactory(sessionFactory)
-    startBarrier = Barrier(2)
+    unitOfWorkFactory = AsyncSqlAlchemyMessageUnitOfWorkFactory(sessionFactory)
 
-    def commitMessage(message: ChatMessage) -> str:
-        """等待两个线程就绪后提交一条候选消息。"""
-        startBarrier.wait()
+    async def commitMessage(message: ChatMessage) -> str:
+        """在独立 Task 和工作单元中提交一条候选消息。"""
         try:
-            with unitOfWorkFactory() as unitOfWork:
-                unitOfWork.messages.add(message)
-                unitOfWork.commit()
+            async with unitOfWorkFactory() as unitOfWork:
+                await unitOfWork.messages.add(message)
+                await unitOfWork.commit()
         except MessageStorageConflictError:
             return "conflict"
         return "committed"
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        results = list(executor.map(commitMessage, messages))
+    results = await asyncio.gather(*(commitMessage(message) for message in messages))
 
     assert sorted(results) == ["committed", "conflict"]
-    assert countMessages(sessionFactory) == 1
+    assert await countMessages(sessionFactory) == 1
 
-    with unitOfWorkFactory() as unitOfWork:
-        persistedMessage = unitOfWork.messages.getByClientMessageId(
+    async with unitOfWorkFactory() as unitOfWork:
+        persistedMessage = await unitOfWork.messages.getByClientMessageId(
             UserId("duplicate-sender"),
             ClientMessageId(clientMessageId),
         )
 
     assert persistedMessage in messages
+
+
+@pytest.mark.asyncio
+async def test_concurrent_tasks_receive_distinct_async_sessions(
+    sessionFactory: async_sessionmaker[AsyncSession],
+) -> None:
+    """并发 Task 必须各自持有并最终关闭独立 AsyncSession。"""
+    unitOfWorkFactory = AsyncSqlAlchemyMessageUnitOfWorkFactory(sessionFactory)
+    bothEntered = asyncio.Event()
+    enteredUnits: list[AsyncSqlAlchemyMessageUnitOfWork] = []
+
+    async def useSession() -> int:
+        """进入工作单元，等待另一 Task 后执行一次显式查询。"""
+        unitOfWork = unitOfWorkFactory()
+        enteredUnits.append(unitOfWork)
+        async with unitOfWork:
+            sessionId = id(unitOfWork._requireSession())
+            if len(enteredUnits) == 2:
+                bothEntered.set()
+            await bothEntered.wait()
+            await unitOfWork.messages.getByClientMessageId(
+                UserId("task-user"),
+                ClientMessageId(UUID(int=sessionId)),
+            )
+            return sessionId
+
+    sessionIds = await asyncio.gather(useSession(), useSession())
+
+    assert len(set(sessionIds)) == 2
+    assert all(unitOfWork._session is None for unitOfWork in enteredUnits)

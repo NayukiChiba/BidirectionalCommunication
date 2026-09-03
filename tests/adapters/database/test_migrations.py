@@ -6,8 +6,10 @@ from pathlib import Path
 from alembic import command
 from sqlalchemy import inspect, text
 
-from src.adapters.database import createSqliteEngine
-from src.adapters.database.migrationConfig import createMigrationConfig
+from src.adapters.database.migrationConfig import (
+    createMigrationConfig,
+    createMigrationEngine,
+)
 from src.config import PROJECT_ROOT
 
 HEAD_REVISION = "b5db92390df6"
@@ -15,7 +17,7 @@ HEAD_REVISION = "b5db92390df6"
 
 def getCurrentRevision(databasePath: Path) -> str | None:
     """读取数据库记录的当前 Alembic revision。"""
-    engine = createSqliteEngine(databasePath)
+    engine = createMigrationEngine(databasePath)
     try:
         with engine.connect() as connection:
             return connection.scalar(text("SELECT version_num FROM alembic_version"))
@@ -25,7 +27,7 @@ def getCurrentRevision(databasePath: Path) -> str | None:
 
 def getTableNames(databasePath: Path) -> set[str]:
     """返回指定 SQLite 数据库的全部表名。"""
-    engine = createSqliteEngine(databasePath)
+    engine = createMigrationEngine(databasePath)
     try:
         return set(inspect(engine).get_table_names())
     finally:

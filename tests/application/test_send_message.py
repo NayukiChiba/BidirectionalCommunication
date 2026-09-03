@@ -43,14 +43,14 @@ class FakeMessageRepository:
         self._events = events
         self._storageError = storageError
 
-    def add(self, message: ChatMessage) -> None:
+    async def add(self, message: ChatMessage) -> None:
         """记录消息或抛出预设存储异常。"""
         self._events.append("add")
         if self._storageError is not None:
             raise self._storageError
         self.messages.append(message)
 
-    def getByClientMessageId(
+    async def getByClientMessageId(
         self,
         senderId: UserId,
         clientMessageId: ClientMessageId,
@@ -90,12 +90,12 @@ class FakeMessageUnitOfWork:
         self.committed = False
         self.rolledBack = False
 
-    def __enter__(self) -> "FakeMessageUnitOfWork":
+    async def __aenter__(self) -> "FakeMessageUnitOfWork":
         """记录进入事务范围。"""
         self._events.append("enter")
         return self
 
-    def __exit__(
+    async def __aexit__(
         self,
         exceptionType: type[BaseException] | None,
         exception: BaseException | None,
@@ -103,17 +103,17 @@ class FakeMessageUnitOfWork:
     ) -> None:
         """异常或未提交时回滚，并记录退出。"""
         if exceptionType is not None or not self.committed:
-            self.rollback()
+            await self.rollback()
         self._events.append("exit")
 
-    def commit(self) -> None:
+    async def commit(self) -> None:
         """记录提交或抛出预设提交异常。"""
         self._events.append("commit")
         if self._commitError is not None:
             raise self._commitError
         self.committed = True
 
-    def rollback(self) -> None:
+    async def rollback(self) -> None:
         """记录回滚。"""
         self._events.append("rollback")
         self.messages.messages[:] = self._snapshot

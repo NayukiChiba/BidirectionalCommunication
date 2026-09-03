@@ -8,11 +8,13 @@ from sqlalchemy import inspect
 
 from src.adapters.database import (
     MessageRecord,
-    createSqliteEngine,
     toDomainMessage,
     toMessageRecord,
 )
-from src.adapters.database.migrationConfig import createMigrationConfig
+from src.adapters.database.migrationConfig import (
+    createMigrationConfig,
+    createMigrationEngine,
+)
 from src.domain import (
     ChatMessage,
     ClientMessageId,
@@ -43,7 +45,7 @@ def createMessage() -> ChatMessage:
 
 def test_message_table_has_explained_constraints_and_index(tmp_path) -> None:
     """消息表应包含身份、幂等和收件箱查询所需结构。"""
-    engine = createSqliteEngine(tmp_path / "schema.sqlite3")
+    engine = createMigrationEngine(tmp_path / "schema.sqlite3")
     try:
         command.upgrade(createMigrationConfig(tmp_path / "schema.sqlite3"), "head")
         inspector = inspect(engine)
@@ -111,3 +113,11 @@ def test_message_conversion_keeps_domain_separate_from_orm() -> None:
     assert restoredMessage.recipient_id == message.recipient_id
     assert restoredMessage.content == message.content
     assert restoredMessage.created_at == message.created_at
+
+
+def test_message_mapping_has_no_implicit_io_attributes() -> None:
+    """消息 ORM 不应包含懒加载关系或延迟字段。"""
+    mapper = inspect(MessageRecord)
+
+    assert list(mapper.relationships) == []
+    assert all(not columnProperty.deferred for columnProperty in mapper.column_attrs)

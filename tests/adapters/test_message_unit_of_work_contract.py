@@ -1,22 +1,23 @@
-"""内存与 SQLAlchemy 消息工作单元的共同契约测试。"""
+"""内存与异步 SQLAlchemy 消息工作单元的共同契约测试。"""
 
-from collections.abc import Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+import pytest_asyncio
 from alembic import command
 from sqlalchemy import select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.adapters import InMemoryMessageUnitOfWorkFactory
 from src.adapters.database import (
+    AsyncSqlAlchemyMessageUnitOfWorkFactory,
     MessageRecord,
-    SqlAlchemyMessageUnitOfWorkFactory,
-    createSessionFactory,
-    createSqliteEngine,
+    createAsyncSessionFactory,
+    createAsyncSqliteEngine,
     toDomainMessage,
 )
 from src.adapters.database.migrationConfig import createMigrationConfig
@@ -36,31 +37,39 @@ class UnitOfWorkBackend:
     """供共同契约读取已提交状态的测试后端。"""
 
     factory: MessageUnitOfWorkFactory
-    loadMessages: Callable[[], tuple[ChatMessage, ...]]
+    loadMessages: Callable[[], Awaitable[tuple[ChatMessage, ...]]]
 
 
-@pytest.fixture(params=("memory", "sqlalchemy"))
-def unitOfWorkBackend(
+@pytest_asyncio.fixture(params=("memory", "sqlalchemy"))
+async def unitOfWorkBackend(
     request: pytest.FixtureRequest,
     tmp_path: Path,
-) -> Iterator[UnitOfWorkBackend]:
-    """为相同契约提供内存和 SQLite 两种后端。"""
+) -> AsyncIterator[UnitOfWorkBackend]:
+    """为相同异步契约提供内存和 SQLite 两种后端。"""
     if request.param == "memory":
         factory = InMemoryMessageUnitOfWorkFactory()
-        yield UnitOfWorkBackend(factory=factory, loadMessages=lambda: factory.messages)
+
+        async def loadMemoryMessages() -> tuple[ChatMessage, ...]:
+            return factory.messages
+
+        yield UnitOfWorkBackend(factory=factory, loadMessages=loadMemoryMessages)
         return
 
     databasePath = tmp_path / "contract.sqlite3"
     command.upgrade(createMigrationConfig(databasePath), "head")
-    engine = createSqliteEngine(databasePath)
-    sessionFactory = createSessionFactory(engine)
+    engine = createAsyncSqliteEngine(databasePath)
+    sessionFactory = createAsyncSessionFactory(engine)
+
+    async def loadDatabaseMessages() -> tuple[ChatMessage, ...]:
+        return await loadSqlAlchemyMessages(sessionFactory)
+
     try:
         yield UnitOfWorkBackend(
-            factory=SqlAlchemyMessageUnitOfWorkFactory(sessionFactory),
-            loadMessages=lambda: loadSqlAlchemyMessages(sessionFactory),
+            factory=AsyncSqlAlchemyMessageUnitOfWorkFactory(sessionFactory),
+            loadMessages=loadDatabaseMessages,
         )
     finally:
-        engine.dispose()
+        await engine.dispose()
 
 
 def createMessage(content: str = "契约测试消息") -> ChatMessage:
@@ -91,67 +100,73 @@ def createFixedMessage(
     )
 
 
-def loadSqlAlchemyMessages(
-    sessionFactory: sessionmaker[Session],
+async def loadSqlAlchemyMessages(
+    sessionFactory: async_sessionmaker[AsyncSession],
 ) -> tuple[ChatMessage, ...]:
-    """从新 Session 加载所有已提交消息。"""
-    with sessionFactory() as session:
-        records = session.scalars(
-            select(MessageRecord).order_by(MessageRecord.createdAt)
+    """从新 AsyncSession 加载所有已提交消息。"""
+    async with sessionFactory() as session:
+        records = (
+            await session.scalars(
+                select(MessageRecord).order_by(MessageRecord.createdAt)
+            )
         ).all()
         return tuple(toDomainMessage(record) for record in records)
 
 
-def test_committed_message_is_persisted(
+@pytest.mark.asyncio
+async def test_committed_message_is_persisted(
     unitOfWorkBackend: UnitOfWorkBackend,
 ) -> None:
     """两种实现都必须持久化显式提交的消息。"""
     message = createMessage()
 
-    with unitOfWorkBackend.factory() as unitOfWork:
-        unitOfWork.messages.add(message)
-        unitOfWork.commit()
+    async with unitOfWorkBackend.factory() as unitOfWork:
+        await unitOfWork.messages.add(message)
+        await unitOfWork.commit()
 
-    assert unitOfWorkBackend.loadMessages() == (message,)
+    assert await unitOfWorkBackend.loadMessages() == (message,)
 
 
-def test_uncommitted_message_is_rolled_back(
+@pytest.mark.asyncio
+async def test_uncommitted_message_is_rolled_back(
     unitOfWorkBackend: UnitOfWorkBackend,
 ) -> None:
     """两种实现退出时都必须回滚未提交消息。"""
-    with unitOfWorkBackend.factory() as unitOfWork:
-        unitOfWork.messages.add(createMessage())
+    async with unitOfWorkBackend.factory() as unitOfWork:
+        await unitOfWork.messages.add(createMessage())
 
-    assert unitOfWorkBackend.loadMessages() == ()
+    assert await unitOfWorkBackend.loadMessages() == ()
 
 
-def test_exception_rolls_back_message(
+@pytest.mark.asyncio
+async def test_exception_rolls_back_message(
     unitOfWorkBackend: UnitOfWorkBackend,
 ) -> None:
     """两种实现遇到异常时都必须回滚并传播异常。"""
     with pytest.raises(RuntimeError, match="模拟用例异常"):
-        with unitOfWorkBackend.factory() as unitOfWork:
-            unitOfWork.messages.add(createMessage())
+        async with unitOfWorkBackend.factory() as unitOfWork:
+            await unitOfWork.messages.add(createMessage())
             raise RuntimeError("模拟用例异常")
 
-    assert unitOfWorkBackend.loadMessages() == ()
+    assert await unitOfWorkBackend.loadMessages() == ()
 
 
-def test_get_by_sender_and_client_message_id(
+@pytest.mark.asyncio
+async def test_get_by_sender_and_client_message_id(
     unitOfWorkBackend: UnitOfWorkBackend,
 ) -> None:
     """两种 Repository 都应按完整幂等键返回原消息。"""
     message = createMessage()
-    with unitOfWorkBackend.factory() as unitOfWork:
-        unitOfWork.messages.add(message)
-        unitOfWork.commit()
+    async with unitOfWorkBackend.factory() as unitOfWork:
+        await unitOfWork.messages.add(message)
+        await unitOfWork.commit()
 
-    with unitOfWorkBackend.factory() as unitOfWork:
-        foundMessage = unitOfWork.messages.getByClientMessageId(
+    async with unitOfWorkBackend.factory() as unitOfWork:
+        foundMessage = await unitOfWork.messages.getByClientMessageId(
             message.sender_id,
             message.client_message_id,
         )
-        missingMessage = unitOfWork.messages.getByClientMessageId(
+        missingMessage = await unitOfWork.messages.getByClientMessageId(
             UserId("another-sender"),
             message.client_message_id,
         )
@@ -160,7 +175,8 @@ def test_get_by_sender_and_client_message_id(
     assert missingMessage is None
 
 
-def test_conversation_cursor_is_stable_for_same_timestamp(
+@pytest.mark.asyncio
+async def test_conversation_cursor_is_stable_for_same_timestamp(
     unitOfWorkBackend: UnitOfWorkBackend,
 ) -> None:
     """两种 Repository 都应使用消息 ID 决胜相同创建时间。"""
@@ -191,25 +207,25 @@ def test_conversation_cursor_is_stable_for_same_timestamp(
             createdAt=createdAt,
         ),
     )
-    with unitOfWorkBackend.factory() as unitOfWork:
+    async with unitOfWorkBackend.factory() as unitOfWork:
         for message in messages:
-            unitOfWork.messages.add(message)
-        unitOfWork.commit()
+            await unitOfWork.messages.add(message)
+        await unitOfWork.commit()
 
-    with unitOfWorkBackend.factory() as unitOfWork:
-        firstPage = unitOfWork.messages.listConversation(
+    async with unitOfWorkBackend.factory() as unitOfWork:
+        firstPage = await unitOfWork.messages.listConversation(
             UserId("user-a"),
             UserId("user-b"),
             cursor=None,
             limit=2,
         )
-        secondPage = unitOfWork.messages.listConversation(
+        secondPage = await unitOfWork.messages.listConversation(
             UserId("user-a"),
             UserId("user-b"),
             cursor=MessageCursor.fromMessage(firstPage[-1]),
             limit=2,
         )
-        emptyPage = unitOfWork.messages.listConversation(
+        emptyPage = await unitOfWork.messages.listConversation(
             UserId("user-a"),
             UserId("user-b"),
             cursor=MessageCursor.fromMessage(secondPage[-1]),

@@ -119,7 +119,7 @@ def test_concrete_dependencies_are_only_created_in_bootstrap() -> None:
         "ConnectionManager",
         "GetMessageHistoryService",
         "SendMessageService",
-        "SqlAlchemyMessageUnitOfWorkFactory",
+        "AsyncSqlAlchemyMessageUnitOfWorkFactory",
         "WebSocketMessageNotifier",
     }
     production_files = [

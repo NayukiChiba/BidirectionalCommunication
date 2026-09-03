@@ -5,8 +5,10 @@ from pathlib import Path
 from alembic import command
 from sqlalchemy import text
 
-from src.adapters.database import createSqliteEngine
-from src.adapters.database.migrationConfig import createMigrationConfig
+from src.adapters.database.migrationConfig import (
+    createMigrationConfig,
+    createMigrationEngine,
+)
 
 
 def test_conversation_history_query_uses_expected_composite_index(
@@ -15,7 +17,7 @@ def test_conversation_history_query_uses_expected_composite_index(
     """双向单聊 OR 查询的两个分支都应复用同一复合索引。"""
     databasePath = tmp_path / "query-plan.sqlite3"
     command.upgrade(createMigrationConfig(databasePath), "head")
-    engine = createSqliteEngine(databasePath)
+    engine = createMigrationEngine(databasePath)
 
     try:
         with engine.connect() as connection:

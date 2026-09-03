@@ -1,11 +1,14 @@
 """历史分页、离线恢复和 WebSocket 幂等验收测试。"""
 
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from src.adapters.database.migrationConfig import createMigrationEngine
+from src.adapters.database.models import MessageRecord
 from src.domain import (
     ChatMessage,
     ClientMessageId,
@@ -34,11 +37,25 @@ def createMessage(
 
 
 def saveMessages(application: FastAPI, messages: tuple[ChatMessage, ...]) -> None:
-    """通过应用实际 UoW 提交测试消息。"""
-    with application.state.unit_of_work_factory() as unitOfWork:
-        for message in messages:
-            unitOfWork.messages.add(message)
-        unitOfWork.commit()
+    """通过同步测试连接准备固定排序的历史数据。"""
+    databasePath = Path(application.state.database_engine.url.database)
+    engine = createMigrationEngine(databasePath)
+    rows = [
+        {
+            "message_id": str(message.message_id),
+            "client_message_id": str(message.client_message_id),
+            "sender_id": str(message.sender_id),
+            "recipient_id": str(message.recipient_id),
+            "content": str(message.content),
+            "created_at": message.created_at,
+        }
+        for message in messages
+    ]
+    try:
+        with engine.begin() as connection:
+            connection.execute(MessageRecord.__table__.insert(), rows)
+    finally:
+        engine.dispose()
 
 
 def test_history_returns_empty_page(testClient: TestClient) -> None:
