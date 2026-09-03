@@ -2,13 +2,16 @@
 
 from types import TracebackType
 
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.adapters.database.sqlAlchemyMessageRepository import (
     SqlAlchemyMessageRepository,
 )
-from src.application.exceptions import MessageStorageError
+from src.application.exceptions import (
+    MessageStorageConflictError,
+    MessageStorageError,
+)
 from src.application.ports import MessageRepository
 
 
@@ -52,6 +55,9 @@ class SqlAlchemyMessageUnitOfWork:
         session = self._requireSession()
         try:
             session.commit()
+        except IntegrityError as error:
+            session.rollback()
+            raise MessageStorageConflictError("消息幂等键或约束冲突") from error
         except SQLAlchemyError as error:
             session.rollback()
             raise MessageStorageError("消息事务提交失败") from error

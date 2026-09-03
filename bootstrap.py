@@ -15,9 +15,9 @@ from src.adapters.database import (
     createSessionFactory,
     createSqliteEngine,
 )
-from src.application import SendMessageService
+from src.application import GetMessageHistoryService, SendMessageService
 from src.config import DATABASE_PATH
-from src.entrypoints import create_router
+from src.entrypoints import create_router, createHistoryRouter
 
 
 def create_app(*, databasePath: Path = DATABASE_PATH) -> FastAPI:
@@ -31,6 +31,7 @@ def create_app(*, databasePath: Path = DATABASE_PATH) -> FastAPI:
         unitOfWorkFactory=unit_of_work_factory,
         notifier=message_notifier,
     )
+    history_service = GetMessageHistoryService(unit_of_work_factory)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -48,10 +49,12 @@ def create_app(*, databasePath: Path = DATABASE_PATH) -> FastAPI:
     app.state.unit_of_work_factory = unit_of_work_factory
     app.state.message_notifier = message_notifier
     app.state.send_message_service = send_message_service
+    app.state.history_service = history_service
     app.include_router(
         create_router(
             send_message_service=send_message_service,
             connection_gateway=connection_manager,
         )
     )
+    app.include_router(createHistoryRouter(history_service))
     return app

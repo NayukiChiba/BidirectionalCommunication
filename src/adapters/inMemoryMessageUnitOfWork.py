@@ -12,8 +12,8 @@ class InMemoryMessageUnitOfWork:
     def __init__(self, committedMessages: dict[MessageId, ChatMessage]) -> None:
         """接收工厂持有的已提交消息存储。"""
         self._committedMessages = committedMessages
-        self._pendingMessages: dict[MessageId, ChatMessage] = {}
-        self.messages = InMemoryMessageRepository(self._pendingMessages)
+        self._workingMessages = committedMessages.copy()
+        self.messages = InMemoryMessageRepository(self._workingMessages)
         self._committed = False
         self._active = False
 
@@ -40,13 +40,13 @@ class InMemoryMessageUnitOfWork:
     def commit(self) -> None:
         """把当前工作单元的暂存消息写入共享内存存储。"""
         self._requireActive()
-        self._committedMessages.update(self._pendingMessages)
+        self._committedMessages.update(self._workingMessages)
         self._committed = True
 
     def rollback(self) -> None:
         """丢弃当前工作单元尚未提交的消息。"""
         self._requireActive()
-        self._pendingMessages.clear()
+        self._workingMessages.clear()
 
     def _requireActive(self) -> None:
         """拒绝在事务范围外提交或回滚。"""

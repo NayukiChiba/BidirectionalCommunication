@@ -1,6 +1,7 @@
 """消息存储端口的内存适配器。"""
 
-from src.domain import ChatMessage, MessageId
+from src.application.models import MessageCursor
+from src.domain import ChatMessage, ClientMessageId, MessageId, UserId
 
 
 class InMemoryMessageRepository:
@@ -16,6 +17,47 @@ class InMemoryMessageRepository:
     def add(self, message: ChatMessage) -> None:
         """保存消息，并以消息的领域身份保证存储项唯一。"""
         self._messages[message.message_id] = message
+
+    def getByClientMessageId(
+        self,
+        senderId: UserId,
+        clientMessageId: ClientMessageId,
+    ) -> ChatMessage | None:
+        """按发送者和客户端幂等键返回原消息。"""
+        return next(
+            (
+                message
+                for message in self._messages.values()
+                if message.sender_id == senderId
+                and message.client_message_id == clientMessageId
+            ),
+            None,
+        )
+
+    def listConversation(
+        self,
+        userId: UserId,
+        peerId: UserId,
+        *,
+        cursor: MessageCursor | None,
+        limit: int,
+    ) -> tuple[ChatMessage, ...]:
+        """按创建时间和消息 ID 正向查询两个用户之间的消息。"""
+        messages = [
+            message
+            for message in self._messages.values()
+            if (message.sender_id == userId and message.recipient_id == peerId)
+            or (message.sender_id == peerId and message.recipient_id == userId)
+        ]
+        messages.sort(key=lambda message: (message.created_at, str(message.message_id)))
+        if cursor is not None:
+            cursorKey = (cursor.created_at, str(cursor.message_id))
+            messages = [
+                message
+                for message in messages
+                if (message.created_at, str(message.message_id)) > cursorKey
+            ]
+        return tuple(messages[:limit])
 
     @property
     def messages(self) -> tuple[ChatMessage, ...]:

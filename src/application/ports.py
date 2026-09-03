@@ -3,8 +3,8 @@
 from types import TracebackType
 from typing import Protocol
 
-from src.application.models import DeliveryOutcome
-from src.domain import ChatMessage
+from src.application.models import DeliveryOutcome, MessageCursor
+from src.domain import ChatMessage, ClientMessageId, UserId
 
 
 class MessageRepository(Protocol):
@@ -12,6 +12,25 @@ class MessageRepository(Protocol):
 
     def add(self, message: ChatMessage) -> None:
         """保存一条已经创建的聊天消息。"""
+        ...
+
+    def getByClientMessageId(
+        self,
+        senderId: UserId,
+        clientMessageId: ClientMessageId,
+    ) -> ChatMessage | None:
+        """按发送者和客户端幂等键查询原消息。"""
+        ...
+
+    def listConversation(
+        self,
+        userId: UserId,
+        peerId: UserId,
+        *,
+        cursor: MessageCursor | None,
+        limit: int,
+    ) -> tuple[ChatMessage, ...]:
+        """按稳定正向游标查询两个用户之间的消息。"""
         ...
 
 

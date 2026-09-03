@@ -47,7 +47,8 @@ class MessageRecord(DatabaseBase):
             name="ck_messages_content_length",
         ),
         Index(
-            "ix_messages_recipient_created_message",
+            "ix_messages_sender_recipient_created_message",
+            "sender_id",
             "recipient_id",
             "created_at",
             "message_id",
