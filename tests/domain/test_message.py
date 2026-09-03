@@ -8,9 +8,9 @@ from uuid import UUID, uuid4
 
 import pytest
 
-import domain.exceptions as exception_module
-import domain.message as message_module
-from domain import (
+import src.domain.exceptions as exception_module
+import src.domain.message as message_module
+from src.domain import (
     ChatMessage,
     ClientMessageId,
     InvalidChatMessage,

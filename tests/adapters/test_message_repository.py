@@ -2,9 +2,9 @@
 
 from uuid import uuid4
 
-from adapters import InMemoryMessageRepository
-from application import MessageRepository
-from domain import (
+from src.adapters import InMemoryMessageRepository
+from src.application import MessageRepository
+from src.domain import (
     ChatMessage,
     ClientMessageId,
     MessageContent,

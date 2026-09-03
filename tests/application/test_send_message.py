@@ -7,18 +7,18 @@ from uuid import uuid4
 
 import pytest
 
-import application.exceptions as exception_module
-import application.models as model_module
-import application.ports as port_module
-import application.sendMessage as service_module
-from application import (
+import src.application.exceptions as exception_module
+import src.application.models as model_module
+import src.application.ports as port_module
+import src.application.sendMessage as service_module
+from src.application import (
     DeliveryOutcome,
     MessageStorageError,
     SendMessageCommand,
     SendMessageService,
     SendMessageStatus,
 )
-from domain import ChatMessage
+from src.domain import ChatMessage
 
 
 class FakeMessageRepository:

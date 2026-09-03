@@ -4,9 +4,9 @@ from uuid import uuid4
 
 import pytest
 
-from adapters import ConnectionSendOutcome, WebSocketMessageNotifier
-from application import DeliveryOutcome
-from domain import ClientMessageId, MessageContent, UserId, create_chat_message
+from src.adapters import ConnectionSendOutcome, WebSocketMessageNotifier
+from src.application import DeliveryOutcome
+from src.domain import ClientMessageId, MessageContent, UserId, create_chat_message
 
 
 class FakeConnectionSender:

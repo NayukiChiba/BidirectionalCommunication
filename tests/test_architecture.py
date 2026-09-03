@@ -20,7 +20,7 @@ def imported_roots(filepath: Path) -> set[str]:
 
 def python_files(package_name: str) -> list[Path]:
     """返回指定项目包中的全部 Python 文件。"""
-    return sorted((PROJECT_ROOT / package_name).glob("*.py"))
+    return sorted((PROJECT_ROOT / "src" / package_name).glob("*.py"))
 
 
 def assert_packages_not_imported(
