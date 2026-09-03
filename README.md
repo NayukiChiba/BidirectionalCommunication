@@ -52,10 +52,11 @@ npm run dev
 src/
 ├── domain/         消息领域对象、不变量和领域异常
 ├── application/    发送消息用例、命令、结果和端口
-├── adapters/       内存存储、WebSocket 连接与通知适配器
+├── adapters/       内存、WebSocket 和同步数据库适配器
 └── entrypoints/    FastAPI 路由、Pydantic 协议模型和错误映射
 bootstrap.py        唯一组合根，创建并注入具体依赖
 main.py             唯一程序启动入口
+examples/           可独立运行的学习示例
 tests/              领域、应用、适配器、架构和外部行为测试
 docs/               VitePress 项目文档
 ```
@@ -92,5 +93,6 @@ main → bootstrap → entrypoints / adapters → application → domain
 - 只支持单进程在线连接和内存消息存储。
 - 没有身份认证，客户端可以自行指定 `user_id`。
 - 进程退出后在线状态和内存消息会丢失。
+- SQLAlchemy 当前仅用于独立映射和事务实验，尚未替换内存消息 Repository。
 - 没有离线投递、已读回执、重试或跨实例通信。
 - ACK 只表示服务端已向目标 WebSocket 执行发送，不表示用户已经阅读。

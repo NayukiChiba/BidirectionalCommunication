@@ -17,6 +17,7 @@ export default defineConfig({
       { text: "快速开始", link: "/guide/getting-started" },
       { text: "消息协议", link: "/guide/message-protocol" },
       { text: "架构", link: "/guide/architecture" },
+      { text: "数据库", link: "/guide/database-foundations" },
       { text: "领域模型", link: "/domain/message-model" },
       {
         text: "GitHub",
@@ -31,6 +32,7 @@ export default defineConfig({
           { text: "快速开始", link: "/guide/getting-started" },
           { text: "WebSocket 消息协议", link: "/guide/message-protocol" },
           { text: "架构与组合根", link: "/guide/architecture" },
+          { text: "关系建模与 SQLAlchemy", link: "/guide/database-foundations" },
         ],
       },
       {
