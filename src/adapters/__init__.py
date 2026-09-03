@@ -1,7 +1,7 @@
 """外部技术能力的适配器。"""
 
-from .inMemoryMessageRepository import InMemoryMessageRepository
-from .webSocketConnectionManager import (
+from src.adapters.inMemoryMessageRepository import InMemoryMessageRepository
+from src.adapters.webSocketConnectionManager import (
     DUPLICATE_CONNECTION_CODE,
     DUPLICATE_CONNECTION_REASON,
     SERVICE_SHUTDOWN_CODE,
@@ -9,7 +9,7 @@ from .webSocketConnectionManager import (
     ConnectionManager,
     ConnectionSendOutcome,
 )
-from .webSocketMessageNotifier import (
+from src.adapters.webSocketMessageNotifier import (
     WebSocketMessageNotifier,
 )
 

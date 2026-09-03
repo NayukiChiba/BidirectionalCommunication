@@ -1,14 +1,14 @@
 """应用层公开接口。"""
 
-from .exceptions import MessageStorageError
-from .models import (
+from src.application.exceptions import MessageStorageError
+from src.application.models import (
     DeliveryOutcome,
     SendMessageCommand,
     SendMessageResult,
     SendMessageStatus,
 )
-from .ports import MessageNotifier, MessageRepository
-from .sendMessage import SendMessageService
+from src.application.ports import MessageNotifier, MessageRepository
+from src.application.sendMessage import SendMessageService
 
 __all__ = [
     "DeliveryOutcome",

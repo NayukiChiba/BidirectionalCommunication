@@ -12,10 +12,31 @@ def imported_roots(filepath: Path) -> set[str]:
     roots: set[str] = set()
     for node in ast.walk(syntax_tree):
         if isinstance(node, ast.Import):
-            roots.update(alias.name.split(".", maxsplit=1)[0] for alias in node.names)
+            module_names = [alias.name for alias in node.names]
         elif isinstance(node, ast.ImportFrom) and node.module is not None:
-            roots.add(node.module.split(".", maxsplit=1)[0])
+            module_names = [node.module]
+        else:
+            continue
+
+        for module_name in module_names:
+            parts = module_name.split(".")
+            roots.add(parts[1] if parts[0] == "src" and len(parts) > 1 else parts[0])
     return roots
+
+
+def test_source_packages_only_use_absolute_imports() -> None:
+    """源码包禁止使用相对导入。"""
+    for package_name in ("domain", "application", "adapters", "entrypoints"):
+        for filepath in python_files(package_name):
+            syntax_tree = ast.parse(filepath.read_text(encoding="utf-8"))
+            relative_imports = [
+                node
+                for node in ast.walk(syntax_tree)
+                if isinstance(node, ast.ImportFrom) and node.level > 0
+            ]
+            assert not relative_imports, (
+                f"{filepath.relative_to(PROJECT_ROOT)} 使用了相对导入"
+            )
 
 
 def python_files(package_name: str) -> list[Path]:

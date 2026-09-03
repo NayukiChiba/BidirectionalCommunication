@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from ..application import (
+from src.application import (
     SendMessageCommand,
     SendMessageService,
     SendMessageStatus,

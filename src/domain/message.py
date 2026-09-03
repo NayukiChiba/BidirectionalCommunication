@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from .exceptions import (
+from src.domain.exceptions import (
     InvalidChatMessage,
     InvalidClientMessageId,
     InvalidMessageContent,
