@@ -69,7 +69,7 @@ main → bootstrap → entrypoints / adapters → application → domain
 
 - Domain 只依赖 Python 标准库和自身模块。
 - Application 只依赖 Domain 和自身定义的端口。
-- Adapters 实现 Application 需要的端口。
+- Adapters 使用 SQLAlchemy、内存实现和 WebSocket 实现 Application 端口。
 - Entrypoints 将外部协议转换为 Application 命令和响应。
 - Bootstrap 是唯一知道所有具体实现并负责生命周期的模块。
 - Main 只调用组合根并暴露 `app`。
@@ -90,9 +90,10 @@ main → bootstrap → entrypoints / adapters → application → domain
 
 ## 当前限制
 
-- 只支持单进程在线连接和内存消息存储。
+- 只支持单进程在线连接和单文件 SQLite 消息存储。
 - 没有身份认证，客户端可以自行指定 `user_id`。
-- 进程退出后在线状态和内存消息会丢失。
-- SQLAlchemy 当前仅用于独立映射和事务实验，尚未替换内存消息 Repository。
+- 进程退出后在线状态会丢失，消息会保存在 `data/chat.sqlite3`。
+- 当前仍使用同步 Session，数据库访问将在 Issue 16 迁移为异步实现。
+- Alembic 尚未接入，应用启动时暂时使用 ORM 元数据建表。
 - 没有离线投递、已读回执、重试或跨实例通信。
 - ACK 只表示服务端已向目标 WebSocket 执行发送，不表示用户已经阅读。

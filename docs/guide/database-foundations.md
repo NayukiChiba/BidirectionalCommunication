@@ -1,8 +1,7 @@
 # 关系建模与同步 SQLAlchemy
 
-当前阶段只建立同步 SQLAlchemy 学习基础设施，不替换应用正在使用的
-`InMemoryMessageRepository`。这样可以先独立理解表结构、连接和事务，再在后续 Issue
-中通过 Repository 与 Unit of Work 接入发送消息用例。
+同步 SQLAlchemy 基础设施已经通过 Repository 与 Unit of Work 接入发送消息用例。
+Application 只依赖自有端口，不知道 SQLite、Session 或 ORM 类型。
 
 ## 最小消息表
 
@@ -56,6 +55,8 @@ ORDER BY created_at, message_id;
 - `src/adapters/database/connection.py`：创建 Engine、Session 工厂和学习阶段元数据。
 - `src/adapters/database/models.py`：声明 `MessageRecord` ORM 持久化模型。
 - `src/adapters/database/messageMapper.py`：在领域模型与 ORM 模型之间显式转换。
+- `src/adapters/database/sqlAlchemyMessageRepository.py`：使用当前 Session 暂存消息。
+- `src/adapters/database/sqlAlchemyMessageUnitOfWork.py`：管理事务和 Session 生命周期。
 - `examples/sqlAlchemyExperiment.py`：独立插入、查询和回滚学习示例。
 
 `ChatMessage` 继续是纯 Python 领域实体，不知道 SQLAlchemy。`MessageRecord` 只描述
@@ -111,8 +112,8 @@ uv run python -m examples.sqlAlchemyExperiment \
 4. 另一条消息在 `flush()` 后执行 `rollback()`。
 5. 再创建一个 Session，确认回滚消息不存在。
 
-`DatabaseBase.metadata.create_all()` 当前只用于学习实验和隔离测试。正式数据库结构演进
-将在 Issue 14 中交给 Alembic，不依赖应用启动时隐式建表。
+`DatabaseBase.metadata.create_all()` 当前临时用于应用启动、学习实验和隔离测试。正式
+数据库结构演进将在 Issue 14 中交给 Alembic，并从应用启动流程移除隐式建表。
 
 ## 为什么先使用同步 Session
 

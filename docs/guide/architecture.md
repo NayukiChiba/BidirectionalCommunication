@@ -6,7 +6,7 @@
 | --- | --- |
 | `domain` | 表达消息领域概念、不变量和领域异常 |
 | `application` | 表达发送消息用例、命令、结果及所需端口 |
-| `adapters` | 使用内存和 WebSocket 实现应用端口及连接管理 |
+| `adapters` | 使用内存、SQLAlchemy 和 WebSocket 实现应用端口及连接管理 |
 | `entrypoints` | 处理 FastAPI 路由、Pydantic 协议模型和错误映射 |
 | `bootstrap.py` | 创建具体对象、注入依赖并管理应用生命周期 |
 | `main.py` | 作为唯一启动入口暴露 FastAPI `app` |
@@ -52,14 +52,15 @@ app = create_app()
 
 ```text
 ConnectionManager
-InMemoryMessageRepository
+SQLite Engine / Session Factory
+SqlAlchemyMessageUnitOfWorkFactory
 WebSocketMessageNotifier
 SendMessageService
 FastAPI
 ```
 
-具体依赖在组合根中通过构造参数注入。组合后的对象保存在 `app.state`，用于应用生命
-周期管理和外部行为测试。业务代码不会通过全局注册表查找依赖。
+具体依赖在组合根中通过构造参数注入。Engine、Session 工厂和 UoW 工厂保存在
+`app.state`，用于生命周期管理和外部行为测试。业务代码不会通过全局注册表查找依赖。
 
 ## WebSocket 的两个方向
 
@@ -91,5 +92,5 @@ ChatMessage
 - Domain 和 Application 没有反向依赖外层。
 - Adapters 不依赖 Entrypoints、Bootstrap 或 Main。
 - Entrypoints 不创建或导入具体 Adapter。
-- 具体 Repository、Notifier、Service 和连接管理器只在 Bootstrap 中创建。
+- 顶层 UoW Factory、Notifier、Service 和连接管理器只在 Bootstrap 中创建。
 - Main 只导入组合根。
