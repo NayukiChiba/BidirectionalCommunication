@@ -49,14 +49,15 @@ npm run dev
 ## 项目结构
 
 ```text
-domain/         消息领域对象、不变量和领域异常
-application/    发送消息用例、命令、结果和端口
-adapters/       内存存储、WebSocket 连接与通知适配器
-entrypoints/    FastAPI 路由、Pydantic 协议模型和错误映射
-bootstrap.py    唯一组合根，创建并注入具体依赖
-main.py         唯一程序启动入口
-tests/          领域、应用、适配器、架构和外部行为测试
-docs/           VitePress 项目文档
+src/
+├── domain/         消息领域对象、不变量和领域异常
+├── application/    发送消息用例、命令、结果和端口
+├── adapters/       内存存储、WebSocket 连接与通知适配器
+└── entrypoints/    FastAPI 路由、Pydantic 协议模型和错误映射
+bootstrap.py        唯一组合根，创建并注入具体依赖
+main.py             唯一程序启动入口
+tests/              领域、应用、适配器、架构和外部行为测试
+docs/               VitePress 项目文档
 ```
 
 依赖只能由外向内：

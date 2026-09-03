@@ -42,7 +42,7 @@ from bootstrap import create_app
 app = create_app()
 ```
 
-`entrypoints/` 表示外部请求进入应用核心的输入适配器，并不是另一个可执行程序入口。
+`src/entrypoints/` 表示外部请求进入应用核心的输入适配器，并不是另一个可执行程序入口。
 它负责将 WebSocket JSON 转换为 `SendMessageCommand`，再将应用结果转换为 ACK 或
 错误事件。
 
