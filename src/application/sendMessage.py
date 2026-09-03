@@ -7,7 +7,7 @@ from src.application.models import (
     SendMessageResult,
     SendMessageStatus,
 )
-from src.application.ports import MessageNotifier, MessageRepository
+from src.application.ports import MessageNotifier, MessageUnitOfWorkFactory
 from src.domain import (
     ClientMessageId,
     DomainError,
@@ -22,11 +22,11 @@ class SendMessageService:
 
     def __init__(
         self,
-        repository: MessageRepository,
+        unitOfWorkFactory: MessageUnitOfWorkFactory,
         notifier: MessageNotifier,
     ) -> None:
         """显式接收发送消息用例依赖的端口。"""
-        self._repository = repository
+        self._unitOfWorkFactory = unitOfWorkFactory
         self._notifier = notifier
 
     async def send(self, command: SendMessageCommand) -> SendMessageResult:
@@ -42,7 +42,9 @@ class SendMessageService:
             return SendMessageResult(status=SendMessageStatus.INVALID_MESSAGE)
 
         try:
-            self._repository.add(message)
+            with self._unitOfWorkFactory() as unitOfWork:
+                unitOfWork.messages.add(message)
+                unitOfWork.commit()
         except MessageStorageError:
             return SendMessageResult(
                 status=SendMessageStatus.STORAGE_FAILED,

@@ -1,6 +1,10 @@
 """外部技术能力的适配器。"""
 
 from src.adapters.inMemoryMessageRepository import InMemoryMessageRepository
+from src.adapters.inMemoryMessageUnitOfWork import (
+    InMemoryMessageUnitOfWork,
+    InMemoryMessageUnitOfWorkFactory,
+)
 from src.adapters.webSocketConnectionManager import (
     DUPLICATE_CONNECTION_CODE,
     DUPLICATE_CONNECTION_REASON,
@@ -19,6 +23,8 @@ __all__ = [
     "DUPLICATE_CONNECTION_CODE",
     "DUPLICATE_CONNECTION_REASON",
     "InMemoryMessageRepository",
+    "InMemoryMessageUnitOfWork",
+    "InMemoryMessageUnitOfWorkFactory",
     "SERVICE_SHUTDOWN_CODE",
     "SERVICE_SHUTDOWN_REASON",
     "WebSocketMessageNotifier",

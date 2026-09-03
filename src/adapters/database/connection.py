@@ -35,7 +35,11 @@ def createSqliteEngine(
     resolvedPath = databasePath.expanduser().resolve()
     resolvedPath.parent.mkdir(parents=True, exist_ok=True)
     databaseUrl = URL.create("sqlite+pysqlite", database=str(resolvedPath))
-    return create_engine(databaseUrl, echo=echo)
+    return create_engine(
+        databaseUrl,
+        echo=echo,
+        connect_args={"check_same_thread": False},
+    )
 
 
 def createSessionFactory(engine: Engine) -> sessionmaker[Session]:
@@ -52,7 +56,7 @@ def createDatabaseSchema(engine: Engine) -> None:
     """
     按 ORM 元数据创建当前学习数据库结构
 
-    该函数仅用于 Issue 12 的实验和测试；正式结构迁移将在 Alembic
-    里管理。
+    该函数在 Alembic 接入前用于应用启动、实验和测试；正式结构迁移
+    将在 Alembic 里管理。
     """
     DatabaseBase.metadata.create_all(engine)

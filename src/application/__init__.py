@@ -7,7 +7,12 @@ from src.application.models import (
     SendMessageResult,
     SendMessageStatus,
 )
-from src.application.ports import MessageNotifier, MessageRepository
+from src.application.ports import (
+    MessageNotifier,
+    MessageRepository,
+    MessageUnitOfWork,
+    MessageUnitOfWorkFactory,
+)
 from src.application.sendMessage import SendMessageService
 
 __all__ = [
@@ -15,6 +20,8 @@ __all__ = [
     "MessageNotifier",
     "MessageRepository",
     "MessageStorageError",
+    "MessageUnitOfWork",
+    "MessageUnitOfWorkFactory",
     "SendMessageCommand",
     "SendMessageResult",
     "SendMessageService",

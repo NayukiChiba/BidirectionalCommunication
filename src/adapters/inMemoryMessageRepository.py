@@ -6,9 +6,12 @@ from src.domain import ChatMessage, MessageId
 class InMemoryMessageRepository:
     """在当前进程内按服务端消息标识保存消息。"""
 
-    def __init__(self) -> None:
-        """创建空的内存消息存储。"""
-        self._messages: dict[MessageId, ChatMessage] = {}
+    def __init__(
+        self,
+        messages: dict[MessageId, ChatMessage] | None = None,
+    ) -> None:
+        """创建空存储或使用工作单元提供的消息字典。"""
+        self._messages = messages if messages is not None else {}
 
     def add(self, message: ChatMessage) -> None:
         """保存消息，并以消息的领域身份保证存储项唯一。"""
