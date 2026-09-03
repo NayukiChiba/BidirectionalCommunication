@@ -90,7 +90,7 @@ def createHistoryRouter(
     router = APIRouter()
 
     @router.get("/messages/history", response_model=MessageHistoryResponse)
-    def getMessageHistory(
+    async def getMessageHistory(
         user_id: Annotated[str, Query(min_length=1, max_length=64)],
         peer_id: Annotated[str, Query(min_length=1, max_length=64)],
         limit: Annotated[
@@ -102,7 +102,7 @@ def createHistoryRouter(
         """查询两个用户之间按时间正向排列的一页消息。"""
         try:
             decodedCursor = decodeHistoryCursor(cursor) if cursor else None
-            page = historyService.getPage(
+            page = await historyService.getPage(
                 MessageHistoryQuery(
                     user_id=user_id,
                     peer_id=peer_id,

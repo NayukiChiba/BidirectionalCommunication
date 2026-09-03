@@ -17,14 +17,14 @@ class InMemoryMessageUnitOfWork:
         self._committed = False
         self._active = False
 
-    def __enter__(self) -> "InMemoryMessageUnitOfWork":
-        """进入新的内存事务范围。"""
+    async def __aenter__(self) -> "InMemoryMessageUnitOfWork":
+        """异步进入新的内存事务范围。"""
         if self._active:
             raise RuntimeError("同一个工作单元不能重复进入")
         self._active = True
         return self
 
-    def __exit__(
+    async def __aexit__(
         self,
         exceptionType: type[BaseException] | None,
         exception: BaseException | None,
@@ -33,17 +33,17 @@ class InMemoryMessageUnitOfWork:
         """未显式提交或发生异常时丢弃暂存消息。"""
         try:
             if exceptionType is not None or not self._committed:
-                self.rollback()
+                await self.rollback()
         finally:
             self._active = False
 
-    def commit(self) -> None:
+    async def commit(self) -> None:
         """把当前工作单元的暂存消息写入共享内存存储。"""
         self._requireActive()
         self._committedMessages.update(self._workingMessages)
         self._committed = True
 
-    def rollback(self) -> None:
+    async def rollback(self) -> None:
         """丢弃当前工作单元尚未提交的消息。"""
         self._requireActive()
         self._workingMessages.clear()

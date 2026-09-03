@@ -13,7 +13,7 @@ from src.domain.message import MAX_MESSAGE_CONTENT_LENGTH
 
 
 class DatabaseBase(DeclarativeBase):
-    """同步数据库 ORM 映射基类。"""
+    """数据库 ORM 映射基类。"""
 
 
 class MessageRecord(DatabaseBase):

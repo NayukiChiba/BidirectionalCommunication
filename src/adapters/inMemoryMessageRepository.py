@@ -14,11 +14,11 @@ class InMemoryMessageRepository:
         """创建空存储或使用工作单元提供的消息字典。"""
         self._messages = messages if messages is not None else {}
 
-    def add(self, message: ChatMessage) -> None:
+    async def add(self, message: ChatMessage) -> None:
         """保存消息，并以消息的领域身份保证存储项唯一。"""
         self._messages[message.message_id] = message
 
-    def getByClientMessageId(
+    async def getByClientMessageId(
         self,
         senderId: UserId,
         clientMessageId: ClientMessageId,
@@ -34,7 +34,7 @@ class InMemoryMessageRepository:
             None,
         )
 
-    def listConversation(
+    async def listConversation(
         self,
         userId: UserId,
         peerId: UserId,

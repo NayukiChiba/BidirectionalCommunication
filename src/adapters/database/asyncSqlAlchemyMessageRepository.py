@@ -1,8 +1,8 @@
-"""基于同步 SQLAlchemy Session 的消息 Repository。"""
+"""基于 AsyncSession 的消息 Repository。"""
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.adapters.database.messageMapper import toDomainMessage, toMessageRecord
 from src.adapters.database.models import MessageRecord
@@ -11,21 +11,21 @@ from src.application.models import MessageCursor
 from src.domain import ChatMessage, ClientMessageId, UserId
 
 
-class SqlAlchemyMessageRepository:
-    """通过当前工作单元的 Session 暂存领域消息。"""
+class AsyncSqlAlchemyMessageRepository:
+    """通过当前工作单元的 AsyncSession 访问消息。"""
 
-    def __init__(self, session: Session) -> None:
-        """接收由工作单元管理生命周期的 Session。"""
+    def __init__(self, session: AsyncSession) -> None:
+        """接收由工作单元管理生命周期的 AsyncSession。"""
         self._session = session
 
-    def add(self, message: ChatMessage) -> None:
-        """将领域消息转换为 ORM 记录并加入当前 Session。"""
+    async def add(self, message: ChatMessage) -> None:
+        """将领域消息转换为 ORM 记录并加入当前 AsyncSession。"""
         try:
             self._session.add(toMessageRecord(message))
         except SQLAlchemyError as error:
             raise MessageStorageError("消息加入数据库会话失败") from error
 
-    def getByClientMessageId(
+    async def getByClientMessageId(
         self,
         senderId: UserId,
         clientMessageId: ClientMessageId,
@@ -36,12 +36,13 @@ class SqlAlchemyMessageRepository:
             MessageRecord.clientMessageId == str(clientMessageId),
         )
         try:
-            record = self._session.scalars(statement).one_or_none()
+            result = await self._session.scalars(statement)
+            record = result.one_or_none()
         except SQLAlchemyError as error:
             raise MessageStorageError("查询幂等消息失败") from error
         return toDomainMessage(record) if record is not None else None
 
-    def listConversation(
+    async def listConversation(
         self,
         userId: UserId,
         peerId: UserId,
@@ -80,7 +81,8 @@ class SqlAlchemyMessageRepository:
         ).limit(limit)
 
         try:
-            records = self._session.scalars(statement).all()
+            result = await self._session.scalars(statement)
+            records = result.all()
         except SQLAlchemyError as error:
             raise MessageStorageError("查询单聊历史失败") from error
         return tuple(toDomainMessage(record) for record in records)

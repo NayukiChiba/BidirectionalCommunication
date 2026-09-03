@@ -48,19 +48,22 @@ class SendMessageService:
             return SendMessageResult(status=SendMessageStatus.INVALID_MESSAGE)
 
         try:
-            with self._unitOfWorkFactory() as unitOfWork:
-                existingMessage = unitOfWork.messages.getByClientMessageId(
+            async with self._unitOfWorkFactory() as unitOfWork:
+                existingMessage = await unitOfWork.messages.getByClientMessageId(
                     senderId,
                     clientMessageId,
                 )
                 if existingMessage is None:
-                    unitOfWork.messages.add(message)
-                    unitOfWork.commit()
+                    await unitOfWork.messages.add(message)
+                    await unitOfWork.commit()
                 else:
                     message = existingMessage
         except MessageStorageConflictError:
             try:
-                recoveredMessage = self._getExistingMessage(senderId, clientMessageId)
+                recoveredMessage = await self._getExistingMessage(
+                    senderId,
+                    clientMessageId,
+                )
             except MessageStorageError:
                 recoveredMessage = None
             if recoveredMessage is None:
@@ -86,14 +89,14 @@ class SendMessageService:
             message=message,
         )
 
-    def _getExistingMessage(
+    async def _getExistingMessage(
         self,
         senderId: UserId,
         clientMessageId: ClientMessageId,
     ) -> ChatMessage | None:
         """在并发唯一约束冲突后通过新工作单元读取原消息。"""
-        with self._unitOfWorkFactory() as unitOfWork:
-            return unitOfWork.messages.getByClientMessageId(
+        async with self._unitOfWorkFactory() as unitOfWork:
+            return await unitOfWork.messages.getByClientMessageId(
                 senderId,
                 clientMessageId,
             )

@@ -18,12 +18,12 @@ class GetMessageHistoryService:
         """接收为每次查询创建独立工作单元的工厂。"""
         self._unitOfWorkFactory = unitOfWorkFactory
 
-    def getPage(self, query: MessageHistoryQuery) -> MessageHistoryPage:
+    async def getPage(self, query: MessageHistoryQuery) -> MessageHistoryPage:
         """返回一页按创建时间和消息 ID 正向排列的消息。"""
         userId, peerId = self._validateQuery(query)
 
-        with self._unitOfWorkFactory() as unitOfWork:
-            messages = unitOfWork.messages.listConversation(
+        async with self._unitOfWorkFactory() as unitOfWork:
+            messages = await unitOfWork.messages.listConversation(
                 userId,
                 peerId,
                 cursor=query.cursor,

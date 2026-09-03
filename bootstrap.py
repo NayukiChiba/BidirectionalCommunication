@@ -11,9 +11,9 @@ from src.adapters import (
     WebSocketMessageNotifier,
 )
 from src.adapters.database import (
-    SqlAlchemyMessageUnitOfWorkFactory,
-    createSessionFactory,
-    createSqliteEngine,
+    AsyncSqlAlchemyMessageUnitOfWorkFactory,
+    createAsyncSessionFactory,
+    createAsyncSqliteEngine,
 )
 from src.application import GetMessageHistoryService, SendMessageService
 from src.config import DATABASE_PATH
@@ -23,9 +23,9 @@ from src.entrypoints import create_router, createHistoryRouter
 def create_app(*, databasePath: Path = DATABASE_PATH) -> FastAPI:
     """创建并组装可运行的 FastAPI 应用。"""
     connection_manager = ConnectionManager()
-    database_engine = createSqliteEngine(databasePath)
-    session_factory = createSessionFactory(database_engine)
-    unit_of_work_factory = SqlAlchemyMessageUnitOfWorkFactory(session_factory)
+    database_engine = createAsyncSqliteEngine(databasePath)
+    session_factory = createAsyncSessionFactory(database_engine)
+    unit_of_work_factory = AsyncSqlAlchemyMessageUnitOfWorkFactory(session_factory)
     message_notifier = WebSocketMessageNotifier(connection_manager)
     send_message_service = SendMessageService(
         unitOfWorkFactory=unit_of_work_factory,
@@ -40,7 +40,7 @@ def create_app(*, databasePath: Path = DATABASE_PATH) -> FastAPI:
             yield
         finally:
             await connection_manager.close_all()
-            database_engine.dispose()
+            await database_engine.dispose()
 
     app = FastAPI(lifespan=lifespan)
     app.state.connection_manager = connection_manager

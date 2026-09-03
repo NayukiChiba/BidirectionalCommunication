@@ -15,6 +15,9 @@ autogenerate 比较。versions/ 中的迁移必须提交到版本控制，并在
   读取时发生解码错误。
 - env.py 决定连接哪个数据库、加载哪份 ORM 元数据，以及如何运行在线或离线迁移。
 
+Alembic CLI 仍使用同步 `pysqlite` 连接，因为迁移是应用启动前执行的短生命周期运维
+命令；应用运行时连接独立使用 `aiosqlite`、AsyncEngine 和 AsyncSession。
+
 env.py 选择数据库的优先级：
 
 1. 命令行 `-x database_path=...` 指定的临时 SQLite 文件。

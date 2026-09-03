@@ -1,11 +1,12 @@
 """
-同步 SQLAlchemy 插入、查询和回滚学习实验
+异步 SQLAlchemy 插入、查询和回滚学习实验
 
 使用方法：
     uv run python -m examples.sqlAlchemyExperiment
 """
 
 import argparse
+import asyncio
 from pathlib import Path
 from uuid import uuid4
 
@@ -13,8 +14,8 @@ from alembic import command
 from sqlalchemy import select
 
 from src.adapters.database.connection import (
-    createSessionFactory,
-    createSqliteEngine,
+    createAsyncSessionFactory,
+    createAsyncSqliteEngine,
 )
 from src.adapters.database.messageMapper import toDomainMessage, toMessageRecord
 from src.adapters.database.migrationConfig import createMigrationConfig
@@ -23,11 +24,10 @@ from src.config import DATABASE_PATH
 from src.domain import ClientMessageId, MessageContent, UserId, create_chat_message
 
 
-def runExperiment(databasePath: Path) -> None:
-    """运行提交后查询和回滚后不可见的独立实验。"""
-    command.upgrade(createMigrationConfig(databasePath), "head")
-    engine = createSqliteEngine(databasePath, echo=True)
-    sessionFactory = createSessionFactory(engine)
+async def runExperiment(databasePath: Path) -> None:
+    """异步运行提交后查询和回滚后不可见的独立实验。"""
+    engine = createAsyncSqliteEngine(databasePath, echo=True)
+    sessionFactory = createAsyncSessionFactory(engine)
 
     committedMessage = create_chat_message(
         client_message_id=ClientMessageId(uuid4()),
@@ -43,38 +43,38 @@ def runExperiment(databasePath: Path) -> None:
     )
 
     try:
-        with sessionFactory() as session:
+        async with sessionFactory() as session:
             session.add(toMessageRecord(committedMessage))
-            session.flush()
-            session.commit()
+            await session.flush()
+            await session.commit()
 
-        with sessionFactory() as session:
+        async with sessionFactory() as session:
             statement = select(MessageRecord).where(
                 MessageRecord.messageId == str(committedMessage.message_id)
             )
-            committedRecord = session.scalars(statement).one()
+            committedRecord = (await session.scalars(statement)).one()
             loadedMessage = toDomainMessage(committedRecord)
             print(f"提交后查询成功: {loadedMessage.message_id}")
 
-        with sessionFactory() as session:
+        async with sessionFactory() as session:
             session.add(toMessageRecord(rolledBackMessage))
-            session.flush()
-            session.rollback()
+            await session.flush()
+            await session.rollback()
 
-        with sessionFactory() as session:
+        async with sessionFactory() as session:
             statement = select(MessageRecord).where(
                 MessageRecord.messageId == str(rolledBackMessage.message_id)
             )
-            if session.scalars(statement).one_or_none() is not None:
-                raise RuntimeError("回滚消息不应被新 Session 查询到")
+            if (await session.scalars(statement)).one_or_none() is not None:
+                raise RuntimeError("回滚消息不应被新 AsyncSession 查询到")
             print(f"回滚后查询不到消息: {rolledBackMessage.message_id}")
     finally:
-        engine.dispose()
+        await engine.dispose()
 
 
 def main() -> None:
     """解析实验参数并执行。"""
-    parser = argparse.ArgumentParser(description="同步 SQLAlchemy 消息持久化实验")
+    parser = argparse.ArgumentParser(description="异步 SQLAlchemy 消息持久化实验")
     parser.add_argument(
         "--database-path",
         dest="databasePath",
@@ -83,7 +83,8 @@ def main() -> None:
         help="SQLite 数据库文件路径",
     )
     arguments = parser.parse_args()
-    runExperiment(arguments.databasePath)
+    command.upgrade(createMigrationConfig(arguments.databasePath), "head")
+    asyncio.run(runExperiment(arguments.databasePath))
 
 
 if __name__ == "__main__":

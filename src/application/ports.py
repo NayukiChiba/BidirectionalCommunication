@@ -10,11 +10,11 @@ from src.domain import ChatMessage, ClientMessageId, UserId
 class MessageRepository(Protocol):
     """发送消息用例需要的最小消息存储端口。"""
 
-    def add(self, message: ChatMessage) -> None:
+    async def add(self, message: ChatMessage) -> None:
         """保存一条已经创建的聊天消息。"""
         ...
 
-    def getByClientMessageId(
+    async def getByClientMessageId(
         self,
         senderId: UserId,
         clientMessageId: ClientMessageId,
@@ -22,7 +22,7 @@ class MessageRepository(Protocol):
         """按发送者和客户端幂等键查询原消息。"""
         ...
 
-    def listConversation(
+    async def listConversation(
         self,
         userId: UserId,
         peerId: UserId,
@@ -39,24 +39,24 @@ class MessageUnitOfWork(Protocol):
 
     messages: MessageRepository
 
-    def __enter__(self) -> "MessageUnitOfWork":
-        """进入事务范围并提供消息 Repository。"""
+    async def __aenter__(self) -> "MessageUnitOfWork":
+        """异步进入事务范围并提供消息 Repository。"""
         ...
 
-    def __exit__(
+    async def __aexit__(
         self,
         exceptionType: type[BaseException] | None,
         exception: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        """退出事务范围，默认回滚未提交工作并释放资源。"""
+        """异步退出事务范围，默认回滚并释放资源。"""
         ...
 
-    def commit(self) -> None:
+    async def commit(self) -> None:
         """显式提交当前工作单元。"""
         ...
 
-    def rollback(self) -> None:
+    async def rollback(self) -> None:
         """回滚当前工作单元。"""
         ...
 

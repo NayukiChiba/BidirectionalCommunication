@@ -2,7 +2,8 @@
 Alembic 迁移运行环境
 
 每次执行 alembic upgrade、downgrade、check 或 revision --autogenerate，
-Alembic 都会运行本文件。它只负责准备数据库连接和 ORM 元数据，不启动 Web 应用。
+Alembic 都会运行本文件。它使用短生命周期同步连接准备数据库和 ORM 元数据，
+不属于应用运行时的异步数据库访问，也不启动 Web 应用。
 """
 
 from logging.config import fileConfig
@@ -12,7 +13,7 @@ from alembic import context
 from sqlalchemy import create_engine, pool
 from sqlalchemy.engine import URL, make_url
 
-from src.adapters.database.connection import createSqliteUrl
+from src.adapters.database.migrationConfig import createMigrationSqliteUrl
 from src.adapters.database.models import DatabaseBase
 from src.config import DATABASE_PATH
 
@@ -33,7 +34,7 @@ def getDatabaseUrl() -> URL:
     arguments = context.get_x_argument(as_dictionary=True)
     databasePath = arguments.get("database_path")
     if databasePath:
-        return createSqliteUrl(Path(databasePath))
+        return createMigrationSqliteUrl(Path(databasePath))
 
     # 第二优先级：测试通过 Config.set_main_option() 注入的完整数据库 URL。
     configuredUrl = config.get_main_option("sqlalchemy.url")
@@ -41,7 +42,7 @@ def getDatabaseUrl() -> URL:
         return make_url(configuredUrl)
 
     # 默认使用 src/config.py 中统一声明的 data/chat.sqlite3。
-    return createSqliteUrl(DATABASE_PATH)
+    return createMigrationSqliteUrl(DATABASE_PATH)
 
 
 def ensureSqliteDirectory(databaseUrl: URL) -> None:
