@@ -7,6 +7,7 @@ from src.adapters.database.models import MessageRecord
 from src.domain import (
     ChatMessage,
     ClientMessageId,
+    ConversationId,
     MessageContent,
     MessageId,
     UserId,
@@ -18,6 +19,7 @@ def toMessageRecord(message: ChatMessage) -> MessageRecord:
     return MessageRecord(
         messageId=str(message.message_id),
         clientMessageId=str(message.client_message_id),
+        conversationId=str(message.conversation_id),
         senderId=str(message.sender_id),
         recipientId=str(message.recipient_id),
         content=str(message.content),
@@ -30,6 +32,7 @@ def toDomainMessage(record: MessageRecord) -> ChatMessage:
     return ChatMessage(
         message_id=MessageId(UUID(record.messageId)),
         client_message_id=ClientMessageId(UUID(record.clientMessageId)),
+        conversation_id=ConversationId(UUID(record.conversationId)),
         sender_id=UserId(record.senderId),
         recipient_id=UserId(record.recipientId),
         content=MessageContent(record.content),

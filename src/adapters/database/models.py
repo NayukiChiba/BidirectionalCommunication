@@ -6,8 +6,17 @@ ORM 类型只描述数据库结构，不承担领域行为。
 
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Index, String, Text, UniqueConstraint
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from src.domain.message import MAX_MESSAGE_CONTENT_LENGTH
 from src.domain.user import MAX_USERNAME_LENGTH, MIN_USERNAME_LENGTH
@@ -48,9 +57,8 @@ class MessageRecord(DatabaseBase):
             name="ck_messages_content_length",
         ),
         Index(
-            "ix_messages_sender_recipient_created_message",
-            "sender_id",
-            "recipient_id",
+            "ix_messages_conversation_created_message",
+            "conversation_id",
             "created_at",
             "message_id",
         ),
@@ -64,6 +72,11 @@ class MessageRecord(DatabaseBase):
     clientMessageId: Mapped[str] = mapped_column(
         "client_message_id",
         String(36),
+        nullable=False,
+    )
+    conversationId: Mapped[str] = mapped_column(
+        "conversation_id",
+        ForeignKey("conversations.conversation_id", ondelete="RESTRICT"),
         nullable=False,
     )
     senderId: Mapped[str] = mapped_column("sender_id", Text, nullable=False)
@@ -119,3 +132,79 @@ class UserRecord(DatabaseBase):
         DateTime(timezone=True),
         nullable=False,
     )
+
+
+class ConversationRecord(DatabaseBase):
+    """一对一会话聚合根的持久化记录。"""
+
+    __tablename__ = "conversations"
+    __table_args__ = (
+        CheckConstraint(
+            "length(conversation_id) = 36",
+            name="ck_conversations_id_length",
+        ),
+        CheckConstraint(
+            "length(trim(member_pair_key)) > 2",
+            name="ck_conversations_member_pair_key_not_blank",
+        ),
+        UniqueConstraint(
+            "member_pair_key",
+            name="uq_conversations_member_pair_key",
+        ),
+    )
+
+    conversationId: Mapped[str] = mapped_column(
+        "conversation_id",
+        String(36),
+        primary_key=True,
+    )
+    memberPairKey: Mapped[str] = mapped_column(
+        "member_pair_key",
+        Text,
+        nullable=False,
+    )
+    createdAt: Mapped[datetime] = mapped_column(
+        "created_at",
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    members: Mapped[list["ConversationMemberRecord"]] = relationship(
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="ConversationMemberRecord.memberPosition",
+    )
+
+
+class ConversationMemberRecord(DatabaseBase):
+    """会话成员关联记录，不承载在线状态或成员角色。"""
+
+    __tablename__ = "conversation_members"
+    __table_args__ = (
+        CheckConstraint(
+            "member_position IN (1, 2)",
+            name="ck_conversation_members_position",
+        ),
+        UniqueConstraint(
+            "conversation_id",
+            "member_position",
+            name="uq_conversation_members_position",
+        ),
+    )
+
+    conversationId: Mapped[str] = mapped_column(
+        "conversation_id",
+        ForeignKey("conversations.conversation_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    userId: Mapped[str] = mapped_column(
+        "user_id",
+        ForeignKey("users.user_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    memberPosition: Mapped[int] = mapped_column(
+        "member_position",
+        Integer,
+        nullable=False,
+    )
+    conversation: Mapped[ConversationRecord] = relationship(back_populates="members")

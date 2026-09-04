@@ -6,8 +6,10 @@
 2. 创建每次调用都返回独立 AsyncSession 的工厂
 """
 
+import sqlite3
 from pathlib import Path
 
+from sqlalchemy import event
 from sqlalchemy.engine import URL
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -33,10 +35,23 @@ def createAsyncSqliteEngine(
     """创建指向 SQLite 文件的异步 Engine。"""
     resolvedPath = databasePath.expanduser().resolve()
     resolvedPath.parent.mkdir(parents=True, exist_ok=True)
-    return create_async_engine(
+    engine = create_async_engine(
         createAsyncSqliteUrl(resolvedPath),
         echo=echo,
     )
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def enableForeignKeys(
+        databaseConnection: sqlite3.Connection,
+        connectionRecord: object,
+    ) -> None:
+        """为每条 SQLite 连接显式启用外键约束。"""
+        del connectionRecord
+        cursor = databaseConnection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    return engine
 
 
 def createAsyncSessionFactory(
