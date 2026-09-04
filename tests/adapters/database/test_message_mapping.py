@@ -8,6 +8,7 @@ from sqlalchemy import inspect
 
 from src.adapters.database import (
     MessageRecord,
+    UserRecord,
     toDomainMessage,
     toMessageRecord,
 )
@@ -117,7 +118,9 @@ def test_message_conversion_keeps_domain_separate_from_orm() -> None:
 
 def test_message_mapping_has_no_implicit_io_attributes() -> None:
     """消息 ORM 不应包含懒加载关系或延迟字段。"""
-    mapper = inspect(MessageRecord)
-
-    assert list(mapper.relationships) == []
-    assert all(not columnProperty.deferred for columnProperty in mapper.column_attrs)
+    for recordType in (MessageRecord, UserRecord):
+        mapper = inspect(recordType)
+        assert list(mapper.relationships) == []
+        assert all(
+            not columnProperty.deferred for columnProperty in mapper.column_attrs
+        )

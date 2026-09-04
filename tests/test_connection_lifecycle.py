@@ -1,57 +1,63 @@
-"""
-WebSocket 连接生命周期验收测试
-"""
+"""WebSocket 连接生命周期验收测试。"""
 
 import pytest
 from fastapi import FastAPI, WebSocketDisconnect
 from fastapi.testclient import TestClient
 
+from tests.conftest import AuthenticatedTestUser
+
 
 def test_duplicate_login_replaces_old_connection(
     testClient: TestClient,
     application: FastAPI,
+    authenticatedUsers: dict[str, AuthenticatedTestUser],
 ) -> None:
-    """
-    测试重复登录会关闭旧连接, 而且不影响新连接
-    """
-    client_message_id = "819145f5-5ddb-4ae1-a382-f81fb81e6f08"
-
+    """同一令牌重复连接时，新连接替换旧连接。"""
+    clientMessageId = "819145f5-5ddb-4ae1-a382-f81fb81e6f08"
+    user = authenticatedUsers["user-a"]
     connectionManager = application.state.connection_manager
-    with testClient.websocket_connect("/ws?user_id=user-a") as old_websocket:
-        with testClient.websocket_connect("/ws?user_id=user-a") as new_websocket:
-            with pytest.raises(WebSocketDisconnect) as exception_info:
-                old_websocket.receive_text()
 
-                assert exception_info.value.code == 4001
-                assert exception_info.value.reason == "该账号已在其他连接登录"
+    with testClient.websocket_connect(
+        "/ws",
+        headers=user.authorizationHeaders,
+    ) as oldWebSocket:
+        with testClient.websocket_connect(
+            "/ws",
+            headers=user.authorizationHeaders,
+        ) as newWebSocket:
+            with pytest.raises(WebSocketDisconnect) as exceptionInfo:
+                oldWebSocket.receive_text()
 
-            # 关闭旧连接, 新连接应该还是在线的
-            old_websocket.close()
-            assert connectionManager.is_online("user-a") is True
+            assert exceptionInfo.value.code == 4001
+            assert exceptionInfo.value.reason == "该账号已在其他连接登录"
 
-            new_websocket.send_json(
+            oldWebSocket.close()
+            assert connectionManager.is_online(user.userId) is True
+
+            newWebSocket.send_json(
                 {
                     "type": "send_message",
-                    "recipient_id": "user-a",
+                    "recipient_id": user.userId,
                     "content": "新连接仍然可用",
-                    "client_message_id": client_message_id,
+                    "client_message_id": clientMessageId,
                 }
             )
+            messageEvent = newWebSocket.receive_json()
+            acknowledgement = newWebSocket.receive_json()
 
-            message_event = new_websocket.receive_json()
-            ack_event = new_websocket.receive_json()
+            assert messageEvent["type"] == "message"
+            assert messageEvent["sender_id"] == user.userId
+            assert messageEvent["recipient_id"] == user.userId
+            assert (
+                acknowledgement["server_message_id"]
+                == messageEvent["server_message_id"]
+            )
 
-            assert message_event["type"] == "message"
-            assert message_event["content"] == "新连接仍然可用"
-            assert message_event["client_message_id"] == client_message_id
-            assert ack_event["type"] == "ack"
-            assert ack_event["server_message_id"] == message_event["server_message_id"]
-
-    assert connectionManager.is_online("user-a") is False
+    assert connectionManager.is_online(user.userId) is False
 
 
 @pytest.mark.parametrize(
-    ("first_user_id", "second_user_id"),
+    ("firstUsername", "secondUsername"),
     [
         pytest.param("user-a", "user-b", id="user-a-first"),
         pytest.param("user-b", "user-a", id="user-b-first"),
@@ -60,28 +66,38 @@ def test_duplicate_login_replaces_old_connection(
 def test_disconnect_users_in_any_order(
     testClient: TestClient,
     application: FastAPI,
-    first_user_id: str,
-    second_user_id: str,
+    authenticatedUsers: dict[str, AuthenticatedTestUser],
+    firstUsername: str,
+    secondUsername: str,
 ) -> None:
-    """测试用户 A、B 按任意顺序断开后清空连接表。"""
+    """两个已认证用户按任意顺序断开后应清空连接表。"""
     connectionManager = application.state.connection_manager
-    with testClient.websocket_connect("/ws?user_id=user-a") as user_a_websocket:
-        with testClient.websocket_connect("/ws?user_id=user-b") as user_b_websocket:
-            assert connectionManager.is_online("user-a") is True
-            assert connectionManager.is_online("user-b") is True
+    userA = authenticatedUsers["user-a"]
+    userB = authenticatedUsers["user-b"]
 
-            websockets = {
-                "user-a": user_a_websocket,
-                "user-b": user_b_websocket,
+    with testClient.websocket_connect(
+        "/ws",
+        headers=userA.authorizationHeaders,
+    ) as userAWebSocket:
+        with testClient.websocket_connect(
+            "/ws",
+            headers=userB.authorizationHeaders,
+        ) as userBWebSocket:
+            assert connectionManager.is_online(userA.userId) is True
+            assert connectionManager.is_online(userB.userId) is True
+
+            webSockets = {
+                "user-a": userAWebSocket,
+                "user-b": userBWebSocket,
             }
-            websockets[first_user_id].close()
-            websockets[second_user_id].close()
+            webSockets[firstUsername].close()
+            webSockets[secondUsername].close()
 
     assert connectionManager._connections == {}
 
 
 @pytest.mark.parametrize(
-    "old_connection_first",
+    "oldConnectionFirst",
     [
         pytest.param(True, id="old-connection-first"),
         pytest.param(False, id="new-connection-first"),
@@ -90,20 +106,29 @@ def test_disconnect_users_in_any_order(
 def test_disconnect_replaced_connections_in_any_order(
     testClient: TestClient,
     application: FastAPI,
-    old_connection_first: bool,
+    authenticatedUsers: dict[str, AuthenticatedTestUser],
+    oldConnectionFirst: bool,
 ) -> None:
-    """测试重复登录的新旧连接按任意顺序退出后清空连接表。"""
+    """同一身份的新旧连接按任意顺序退出后应清空连接表。"""
     connectionManager = application.state.connection_manager
-    with testClient.websocket_connect("/ws?user_id=user-a") as old_websocket:
-        with testClient.websocket_connect("/ws?user_id=user-a") as new_websocket:
-            if old_connection_first:
-                first_websocket = old_websocket
-                second_websocket = new_websocket
-            else:
-                first_websocket = new_websocket
-                second_websocket = old_websocket
+    user = authenticatedUsers["user-a"]
 
-            first_websocket.close()
-            second_websocket.close()
+    with testClient.websocket_connect(
+        "/ws",
+        headers=user.authorizationHeaders,
+    ) as oldWebSocket:
+        with testClient.websocket_connect(
+            "/ws",
+            headers=user.authorizationHeaders,
+        ) as newWebSocket:
+            if oldConnectionFirst:
+                firstWebSocket = oldWebSocket
+                secondWebSocket = newWebSocket
+            else:
+                firstWebSocket = newWebSocket
+                secondWebSocket = oldWebSocket
+
+            firstWebSocket.close()
+            secondWebSocket.close()
 
     assert connectionManager._connections == {}

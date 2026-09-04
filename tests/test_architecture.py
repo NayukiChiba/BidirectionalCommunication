@@ -116,8 +116,13 @@ def test_main_only_imports_the_composition_root() -> None:
 def test_concrete_dependencies_are_only_created_in_bootstrap() -> None:
     """生产代码只能在组合根中实例化具体依赖。"""
     concrete_names = {
+        "AsyncSqlAlchemyUserUnitOfWorkFactory",
+        "AuthenticationService",
         "ConnectionManager",
+        "CurrentUserDependency",
         "GetMessageHistoryService",
+        "JwtAccessTokenProvider",
+        "PwdlibPasswordHasher",
         "SendMessageService",
         "AsyncSqlAlchemyMessageUnitOfWorkFactory",
         "WebSocketMessageNotifier",

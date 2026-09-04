@@ -16,6 +16,7 @@ from src.domain import (
     MessageId,
     UserId,
 )
+from tests.conftest import AuthenticatedTestUser
 
 
 def createMessage(
@@ -58,11 +59,17 @@ def saveMessages(application: FastAPI, messages: tuple[ChatMessage, ...]) -> Non
         engine.dispose()
 
 
-def test_history_returns_empty_page(testClient: TestClient) -> None:
+def test_history_returns_empty_page(
+    testClient: TestClient,
+    authenticatedUsers: dict[str, AuthenticatedTestUser],
+) -> None:
     """没有单聊历史时返回空页。"""
+    userA = authenticatedUsers["user-a"]
+    userB = authenticatedUsers["user-b"]
     response = testClient.get(
         "/messages/history",
-        params={"user_id": "user-a", "peer_id": "user-b"},
+        params={"peer_id": userB.userId},
+        headers=userA.authorizationHeaders,
     )
 
     assert response.status_code == 200
@@ -76,31 +83,34 @@ def test_history_returns_empty_page(testClient: TestClient) -> None:
 def test_history_cursor_has_no_duplicates_or_gaps_for_same_timestamp(
     testClient: TestClient,
     application: FastAPI,
+    authenticatedUsers: dict[str, AuthenticatedTestUser],
 ) -> None:
     """相同时间消息应由消息 ID 稳定决胜并跨页完整返回。"""
     createdAt = datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc)
+    userA = authenticatedUsers["user-a"]
+    userB = authenticatedUsers["user-b"]
     messages = (
         createMessage(
             sequence=3,
-            senderId="user-a",
-            recipientId="user-b",
+            senderId=userA.userId,
+            recipientId=userB.userId,
             createdAt=createdAt,
         ),
         createMessage(
             sequence=1,
-            senderId="user-b",
-            recipientId="user-a",
+            senderId=userB.userId,
+            recipientId=userA.userId,
             createdAt=createdAt,
         ),
         createMessage(
             sequence=2,
-            senderId="user-a",
-            recipientId="user-b",
+            senderId=userA.userId,
+            recipientId=userB.userId,
             createdAt=createdAt,
         ),
         createMessage(
             sequence=4,
-            senderId="user-a",
+            senderId=userA.userId,
             recipientId="other-user",
             createdAt=createdAt,
         ),
@@ -109,17 +119,18 @@ def test_history_cursor_has_no_duplicates_or_gaps_for_same_timestamp(
 
     firstResponse = testClient.get(
         "/messages/history",
-        params={"user_id": "user-a", "peer_id": "user-b", "limit": 2},
+        params={"peer_id": userB.userId, "limit": 2},
+        headers=userA.authorizationHeaders,
     )
     firstPage = firstResponse.json()
     secondResponse = testClient.get(
         "/messages/history",
         params={
-            "user_id": "user-a",
-            "peer_id": "user-b",
+            "peer_id": userB.userId,
             "limit": 2,
             "cursor": firstPage["next_cursor"],
         },
+        headers=userA.authorizationHeaders,
     )
     secondPage = secondResponse.json()
 
@@ -139,15 +150,20 @@ def test_history_cursor_has_no_duplicates_or_gaps_for_same_timestamp(
     assert len(allMessageIds) == len(set(allMessageIds)) == 3
 
 
-def test_history_rejects_invalid_cursor(testClient: TestClient) -> None:
+def test_history_rejects_invalid_cursor(
+    testClient: TestClient,
+    authenticatedUsers: dict[str, AuthenticatedTestUser],
+) -> None:
     """损坏或伪造的游标应返回稳定查询错误。"""
+    userA = authenticatedUsers["user-a"]
+    userB = authenticatedUsers["user-b"]
     response = testClient.get(
         "/messages/history",
         params={
-            "user_id": "user-a",
-            "peer_id": "user-b",
+            "peer_id": userB.userId,
             "cursor": "not-a-valid-cursor",
         },
+        headers=userA.authorizationHeaders,
     )
 
     assert response.status_code == 400
@@ -156,16 +172,21 @@ def test_history_rejects_invalid_cursor(testClient: TestClient) -> None:
 
 def test_offline_message_can_be_pulled_after_previous_cursor(
     testClient: TestClient,
+    authenticatedUsers: dict[str, AuthenticatedTestUser],
 ) -> None:
     """接收者离线期间提交的消息应能通过旧游标主动拉取。"""
     firstClientMessageId = "10000000-0000-0000-0000-000000000001"
     secondClientMessageId = "20000000-0000-0000-0000-000000000002"
+    userA = authenticatedUsers["user-a"]
+    userB = authenticatedUsers["user-b"]
 
-    with testClient.websocket_connect("/ws?user_id=user-a") as senderWebSocket:
+    with testClient.websocket_connect(
+        "/ws", headers=userA.authorizationHeaders
+    ) as senderWebSocket:
         senderWebSocket.send_json(
             {
                 "type": "send_message",
-                "recipient_id": "user-b",
+                "recipient_id": userB.userId,
                 "content": "before-disconnect",
                 "client_message_id": firstClientMessageId,
             }
@@ -174,15 +195,18 @@ def test_offline_message_can_be_pulled_after_previous_cursor(
 
     firstPage = testClient.get(
         "/messages/history",
-        params={"user_id": "user-b", "peer_id": "user-a"},
+        params={"peer_id": userA.userId},
+        headers=userB.authorizationHeaders,
     ).json()
     assert [item["content"] for item in firstPage["messages"]] == ["before-disconnect"]
 
-    with testClient.websocket_connect("/ws?user_id=user-a") as senderWebSocket:
+    with testClient.websocket_connect(
+        "/ws", headers=userA.authorizationHeaders
+    ) as senderWebSocket:
         senderWebSocket.send_json(
             {
                 "type": "send_message",
-                "recipient_id": "user-b",
+                "recipient_id": userB.userId,
                 "content": "while-offline",
                 "client_message_id": secondClientMessageId,
             }
@@ -192,29 +216,36 @@ def test_offline_message_can_be_pulled_after_previous_cursor(
     missingPage = testClient.get(
         "/messages/history",
         params={
-            "user_id": "user-b",
-            "peer_id": "user-a",
+            "peer_id": userA.userId,
             "cursor": firstPage["next_cursor"],
         },
+        headers=userB.authorizationHeaders,
     ).json()
     assert [item["content"] for item in missingPage["messages"]] == ["while-offline"]
 
 
 def test_duplicate_websocket_command_returns_same_message_without_second_row(
     testClient: TestClient,
+    authenticatedUsers: dict[str, AuthenticatedTestUser],
 ) -> None:
     """重复命令可重复推送，但必须返回同一服务端消息且只存一行。"""
     clientMessageId = "30000000-0000-0000-0000-000000000003"
     acknowledgements = []
     deliveredMessages = []
+    userA = authenticatedUsers["user-a"]
+    userB = authenticatedUsers["user-b"]
 
-    with testClient.websocket_connect("/ws?user_id=user-b") as recipientWebSocket:
-        with testClient.websocket_connect("/ws?user_id=user-a") as senderWebSocket:
+    with testClient.websocket_connect(
+        "/ws", headers=userB.authorizationHeaders
+    ) as recipientWebSocket:
+        with testClient.websocket_connect(
+            "/ws", headers=userA.authorizationHeaders
+        ) as senderWebSocket:
             for _ in range(2):
                 senderWebSocket.send_json(
                     {
                         "type": "send_message",
-                        "recipient_id": "user-b",
+                        "recipient_id": userB.userId,
                         "content": "retry-me",
                         "client_message_id": clientMessageId,
                     }
@@ -233,7 +264,8 @@ def test_duplicate_websocket_command_returns_same_message_without_second_row(
 
     history = testClient.get(
         "/messages/history",
-        params={"user_id": "user-a", "peer_id": "user-b"},
+        params={"peer_id": userB.userId},
+        headers=userA.authorizationHeaders,
     ).json()
     assert len(history["messages"]) == 1
     assert (

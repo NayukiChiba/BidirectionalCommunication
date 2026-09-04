@@ -12,7 +12,7 @@ from src.adapters.database.migrationConfig import (
 )
 from src.config import PROJECT_ROOT
 
-HEAD_REVISION = "b5db92390df6"
+HEAD_REVISION = "f53ad4a832a9"
 
 
 def getCurrentRevision(databasePath: Path) -> str | None:
@@ -41,7 +41,11 @@ def test_upgrade_empty_database_to_head(tmp_path: Path) -> None:
 
     command.upgrade(migrationConfig, "head")
 
-    assert getTableNames(databasePath) == {"alembic_version", "messages"}
+    assert getTableNames(databasePath) == {
+        "alembic_version",
+        "messages",
+        "users",
+    }
     assert getCurrentRevision(databasePath) == HEAD_REVISION
 
 
@@ -58,7 +62,11 @@ def test_downgrade_then_upgrade_restores_target_schema(tmp_path: Path) -> None:
 
     command.upgrade(migrationConfig, "head")
 
-    assert getTableNames(databasePath) == {"alembic_version", "messages"}
+    assert getTableNames(databasePath) == {
+        "alembic_version",
+        "messages",
+        "users",
+    }
     assert getCurrentRevision(databasePath) == HEAD_REVISION
 
 
