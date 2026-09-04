@@ -17,7 +17,7 @@ class SendMessageCommand:
     """与具体传输协议无关的发送消息命令。"""
 
     sender_id: str
-    recipient_id: str
+    conversation_id: UUID
     content: str
     client_message_id: UUID
 
@@ -38,6 +38,7 @@ class SendMessageStatus(StrEnum):
     DELIVERY_FAILED = "delivery_failed"
     STORAGE_FAILED = "storage_failed"
     INVALID_MESSAGE = "invalid_message"
+    CONVERSATION_UNAVAILABLE = "conversation_unavailable"
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,10 +81,10 @@ class MessageCursor:
 
 @dataclass(frozen=True, slots=True)
 class MessageHistoryQuery:
-    """按两个用户和可选游标查询单聊历史。"""
+    """按会话和可选游标查询当前用户可见的单聊历史。"""
 
     user_id: str
-    peer_id: str
+    conversation_id: UUID
     cursor: MessageCursor | None = None
     limit: int = DEFAULT_HISTORY_PAGE_SIZE
 

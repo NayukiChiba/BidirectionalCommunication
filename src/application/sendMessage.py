@@ -1,6 +1,10 @@
 """发送消息应用用例。"""
 
+from uuid import UUID
+
+from src.application.conversationPorts import ConversationUnitOfWorkFactory
 from src.application.exceptions import (
+    ConversationStorageError,
     MessageStorageConflictError,
     MessageStorageError,
 )
@@ -14,6 +18,8 @@ from src.application.ports import MessageNotifier, MessageUnitOfWorkFactory
 from src.domain import (
     ChatMessage,
     ClientMessageId,
+    ConversationId,
+    ConversationMemberRequired,
     DomainError,
     MessageContent,
     UserId,
@@ -27,10 +33,12 @@ class SendMessageService:
     def __init__(
         self,
         unitOfWorkFactory: MessageUnitOfWorkFactory,
+        conversationUnitOfWorkFactory: ConversationUnitOfWorkFactory,
         notifier: MessageNotifier,
     ) -> None:
         """显式接收发送消息用例依赖的端口。"""
         self._unitOfWorkFactory = unitOfWorkFactory
+        self._conversationUnitOfWorkFactory = conversationUnitOfWorkFactory
         self._notifier = notifier
 
     async def send(self, command: SendMessageCommand) -> SendMessageResult:
@@ -38,13 +46,28 @@ class SendMessageService:
         try:
             clientMessageId = ClientMessageId(command.client_message_id)
             senderId = UserId(command.sender_id)
+            conversationId = ConversationId(UUID(str(command.conversation_id)))
+            async with self._conversationUnitOfWorkFactory() as conversationUnit:
+                conversation = await conversationUnit.conversations.getById(
+                    conversationId
+                )
+            if conversation is None:
+                return SendMessageResult(
+                    status=SendMessageStatus.CONVERSATION_UNAVAILABLE
+                )
+            conversation.requireMember(senderId)
             message = create_chat_message(
                 client_message_id=clientMessageId,
+                conversation_id=conversationId,
                 sender_id=senderId,
-                recipient_id=UserId(command.recipient_id),
+                recipient_id=conversation.getOtherMember(senderId),
                 content=MessageContent(command.content),
             )
-        except DomainError:
+        except ConversationMemberRequired:
+            return SendMessageResult(status=SendMessageStatus.CONVERSATION_UNAVAILABLE)
+        except ConversationStorageError:
+            return SendMessageResult(status=SendMessageStatus.STORAGE_FAILED)
+        except (DomainError, ValueError):
             return SendMessageResult(status=SendMessageStatus.INVALID_MESSAGE)
 
         try:
@@ -56,6 +79,8 @@ class SendMessageService:
                 if existingMessage is None:
                     await unitOfWork.messages.add(message)
                     await unitOfWork.commit()
+                elif existingMessage.conversation_id != conversationId:
+                    return SendMessageResult(status=SendMessageStatus.INVALID_MESSAGE)
                 else:
                     message = existingMessage
         except MessageStorageConflictError:
@@ -71,6 +96,8 @@ class SendMessageService:
                     status=SendMessageStatus.STORAGE_FAILED,
                     message=message,
                 )
+            if recoveredMessage.conversation_id != conversationId:
+                return SendMessageResult(status=SendMessageStatus.INVALID_MESSAGE)
             message = recoveredMessage
         except MessageStorageError:
             return SendMessageResult(

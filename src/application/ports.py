@@ -4,7 +4,7 @@ from types import TracebackType
 from typing import Protocol
 
 from src.application.models import DeliveryOutcome, MessageCursor
-from src.domain import ChatMessage, ClientMessageId, UserId
+from src.domain import ChatMessage, ClientMessageId, ConversationId, UserId
 
 
 class MessageRepository(Protocol):
@@ -22,15 +22,14 @@ class MessageRepository(Protocol):
         """按发送者和客户端幂等键查询原消息。"""
         ...
 
-    async def listConversation(
+    async def listByConversation(
         self,
-        userId: UserId,
-        peerId: UserId,
+        conversationId: ConversationId,
         *,
         cursor: MessageCursor | None,
         limit: int,
     ) -> tuple[ChatMessage, ...]:
-        """按稳定正向游标查询两个用户之间的消息。"""
+        """按稳定正向游标查询一个会话内的消息。"""
         ...
 
 
