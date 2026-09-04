@@ -4,12 +4,16 @@ from typing import Literal, Protocol
 from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi.security.utils import get_authorization_scheme_param
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from src.application import (
+    AuthenticationService,
+    InvalidAccessToken,
     SendMessageCommand,
     SendMessageService,
     SendMessageStatus,
+    UserStorageError,
 )
 
 
@@ -77,6 +81,7 @@ def create_router(
     *,
     send_message_service: SendMessageService,
     connection_gateway: WebSocketConnectionGateway,
+    authenticationService: AuthenticationService,
 ) -> APIRouter:
     """创建已经注入应用服务和连接网关的 FastAPI 路由。"""
     router = APIRouter()
@@ -87,8 +92,20 @@ def create_router(
         return {"status": "ok"}
 
     @router.websocket("/ws")
-    async def websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
-        """接收发送消息命令，并将应用结果映射为 WebSocket 协议响应。"""
+    async def websocket_endpoint(websocket: WebSocket) -> None:
+        """在握手阶段认证后接收消息命令。"""
+        authorization = websocket.headers.get("authorization")
+        scheme, token = get_authorization_scheme_param(authorization)
+        if scheme.lower() != "bearer" or not token:
+            await websocket.close(code=4401, reason="缺少身份凭证")
+            return
+        try:
+            currentUser = await authenticationService.authenticateAccessToken(token)
+        except (InvalidAccessToken, UserStorageError):
+            await websocket.close(code=4401, reason="身份凭证无效")
+            return
+
+        user_id = str(currentUser.user_id)
         await connection_gateway.connect(user_id=user_id, websocket=websocket)
 
         try:

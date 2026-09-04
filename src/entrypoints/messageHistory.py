@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from src.application import (
@@ -18,7 +18,9 @@ from src.application import (
     MessageCursor,
     MessageHistoryQuery,
     MessageStorageError,
+    UserIdentity,
 )
+from src.entrypoints.authentication import CurrentUserDependency
 
 CURSOR_VERSION = 1
 
@@ -85,14 +87,15 @@ def decodeHistoryCursor(value: str) -> MessageCursor:
 
 def createHistoryRouter(
     historyService: GetMessageHistoryService,
+    currentUserDependency: CurrentUserDependency,
 ) -> APIRouter:
     """创建已经注入历史查询服务的 HTTP 路由。"""
     router = APIRouter()
 
     @router.get("/messages/history", response_model=MessageHistoryResponse)
     async def getMessageHistory(
-        user_id: Annotated[str, Query(min_length=1, max_length=64)],
         peer_id: Annotated[str, Query(min_length=1, max_length=64)],
+        currentUser: Annotated[UserIdentity, Depends(currentUserDependency)],
         limit: Annotated[
             int,
             Query(ge=1, le=MAX_HISTORY_PAGE_SIZE),
@@ -104,7 +107,7 @@ def createHistoryRouter(
             decodedCursor = decodeHistoryCursor(cursor) if cursor else None
             page = await historyService.getPage(
                 MessageHistoryQuery(
-                    user_id=user_id,
+                    user_id=str(currentUser.user_id),
                     peer_id=peer_id,
                     cursor=decodedCursor,
                     limit=limit,

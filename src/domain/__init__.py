@@ -7,7 +7,10 @@ from src.domain.exceptions import (
     InvalidMessageContent,
     InvalidMessageCreatedAt,
     InvalidMessageId,
+    InvalidPasswordHash,
+    InvalidUser,
     InvalidUserId,
+    InvalidUsername,
 )
 from src.domain.message import (
     ChatMessage,
@@ -17,6 +20,7 @@ from src.domain.message import (
     UserId,
     create_chat_message,
 )
+from src.domain.user import PasswordHash, User, Username, createUser
 
 __all__ = [
     "ChatMessage",
@@ -27,9 +31,16 @@ __all__ = [
     "InvalidMessageContent",
     "InvalidMessageCreatedAt",
     "InvalidMessageId",
+    "InvalidPasswordHash",
+    "InvalidUser",
     "InvalidUserId",
+    "InvalidUsername",
     "MessageContent",
     "MessageId",
+    "PasswordHash",
+    "User",
     "UserId",
+    "Username",
+    "createUser",
     "create_chat_message",
 ]

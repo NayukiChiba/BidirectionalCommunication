@@ -10,6 +10,7 @@ from sqlalchemy import CheckConstraint, DateTime, Index, String, Text, UniqueCon
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from src.domain.message import MAX_MESSAGE_CONTENT_LENGTH
+from src.domain.user import MAX_USERNAME_LENGTH, MIN_USERNAME_LENGTH
 
 
 class DatabaseBase(DeclarativeBase):
@@ -68,6 +69,51 @@ class MessageRecord(DatabaseBase):
     senderId: Mapped[str] = mapped_column("sender_id", Text, nullable=False)
     recipientId: Mapped[str] = mapped_column("recipient_id", Text, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    createdAt: Mapped[datetime] = mapped_column(
+        "created_at",
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+
+class UserRecord(DatabaseBase):
+    """认证用户在关系数据库中的持久化记录。"""
+
+    __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint(
+            "length(user_id) = 36",
+            name="ck_users_user_id_length",
+        ),
+        CheckConstraint(
+            f"length(username) BETWEEN {MIN_USERNAME_LENGTH} AND {MAX_USERNAME_LENGTH}",
+            name="ck_users_username_length",
+        ),
+        CheckConstraint(
+            "username = lower(trim(username))",
+            name="ck_users_username_normalized",
+        ),
+        CheckConstraint(
+            "length(trim(password_hash)) > 0",
+            name="ck_users_password_hash_not_blank",
+        ),
+        UniqueConstraint("username", name="uq_users_username"),
+    )
+
+    userId: Mapped[str] = mapped_column(
+        "user_id",
+        String(36),
+        primary_key=True,
+    )
+    username: Mapped[str] = mapped_column(
+        String(MAX_USERNAME_LENGTH),
+        nullable=False,
+    )
+    passwordHash: Mapped[str] = mapped_column(
+        "password_hash",
+        Text,
+        nullable=False,
+    )
     createdAt: Mapped[datetime] = mapped_column(
         "created_at",
         DateTime(timezone=True),

@@ -12,20 +12,48 @@ from src.adapters import (
 )
 from src.adapters.database import (
     AsyncSqlAlchemyMessageUnitOfWorkFactory,
+    AsyncSqlAlchemyUserUnitOfWorkFactory,
     createAsyncSessionFactory,
     createAsyncSqliteEngine,
 )
-from src.application import GetMessageHistoryService, SendMessageService
-from src.config import DATABASE_PATH
-from src.entrypoints import create_router, createHistoryRouter
+from src.adapters.security import JwtAccessTokenProvider, PwdlibPasswordHasher
+from src.application import (
+    AuthenticationService,
+    GetMessageHistoryService,
+    SendMessageService,
+)
+from src.config import DATABASE_PATH, AuthSettings
+from src.entrypoints import (
+    CurrentUserDependency,
+    create_router,
+    createAuthenticationRouter,
+    createHistoryRouter,
+)
 
 
-def create_app(*, databasePath: Path = DATABASE_PATH) -> FastAPI:
+def create_app(
+    *,
+    databasePath: Path = DATABASE_PATH,
+    authSettings: AuthSettings | None = None,
+) -> FastAPI:
     """创建并组装可运行的 FastAPI 应用。"""
+    resolvedAuthSettings = authSettings or AuthSettings()
     connection_manager = ConnectionManager()
     database_engine = createAsyncSqliteEngine(databasePath)
     session_factory = createAsyncSessionFactory(database_engine)
     unit_of_work_factory = AsyncSqlAlchemyMessageUnitOfWorkFactory(session_factory)
+    user_unit_of_work_factory = AsyncSqlAlchemyUserUnitOfWorkFactory(session_factory)
+    password_hasher = PwdlibPasswordHasher()
+    access_token_provider = JwtAccessTokenProvider(
+        secretKey=resolvedAuthSettings.secretKey.get_secret_value(),
+        expireMinutes=resolvedAuthSettings.accessTokenExpireMinutes,
+    )
+    authentication_service = AuthenticationService(
+        userUnitOfWorkFactory=user_unit_of_work_factory,
+        passwordHasher=password_hasher,
+        accessTokenProvider=access_token_provider,
+    )
+    current_user_dependency = CurrentUserDependency(authentication_service)
     message_notifier = WebSocketMessageNotifier(connection_manager)
     send_message_service = SendMessageService(
         unitOfWorkFactory=unit_of_work_factory,
@@ -47,14 +75,28 @@ def create_app(*, databasePath: Path = DATABASE_PATH) -> FastAPI:
     app.state.database_engine = database_engine
     app.state.session_factory = session_factory
     app.state.unit_of_work_factory = unit_of_work_factory
+    app.state.user_unit_of_work_factory = user_unit_of_work_factory
     app.state.message_notifier = message_notifier
     app.state.send_message_service = send_message_service
     app.state.history_service = history_service
+    app.state.authentication_service = authentication_service
+    app.include_router(
+        createAuthenticationRouter(
+            authentication_service,
+            current_user_dependency,
+        )
+    )
     app.include_router(
         create_router(
             send_message_service=send_message_service,
             connection_gateway=connection_manager,
+            authenticationService=authentication_service,
         )
     )
-    app.include_router(createHistoryRouter(history_service))
+    app.include_router(
+        createHistoryRouter(
+            history_service,
+            current_user_dependency,
+        )
+    )
     return app

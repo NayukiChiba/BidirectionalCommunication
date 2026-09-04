@@ -9,6 +9,18 @@ class InvalidUserId(DomainError):
     """用户标识不合法。"""
 
 
+class InvalidUsername(DomainError):
+    """用户名不符合领域规则。"""
+
+
+class InvalidPasswordHash(DomainError):
+    """密码哈希不符合领域规则。"""
+
+
+class InvalidUser(DomainError):
+    """用户实体组合不符合领域规则。"""
+
+
 class InvalidMessageId(DomainError):
     """服务端消息标识不合法。"""
 
