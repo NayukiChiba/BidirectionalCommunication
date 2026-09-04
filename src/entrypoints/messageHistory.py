@@ -13,6 +13,8 @@ from pydantic import BaseModel
 from src.application import (
     DEFAULT_HISTORY_PAGE_SIZE,
     MAX_HISTORY_PAGE_SIZE,
+    ConversationStorageError,
+    ConversationUnavailable,
     GetMessageHistoryService,
     InvalidMessageHistoryQuery,
     MessageCursor,
@@ -30,6 +32,7 @@ class HistoryMessageItem(BaseModel):
 
     server_message_id: UUID
     client_message_id: UUID
+    conversation_id: UUID
     sender_id: str
     recipient_id: str
     content: str
@@ -92,9 +95,12 @@ def createHistoryRouter(
     """创建已经注入历史查询服务的 HTTP 路由。"""
     router = APIRouter()
 
-    @router.get("/messages/history", response_model=MessageHistoryResponse)
+    @router.get(
+        "/conversations/{conversation_id}/messages",
+        response_model=MessageHistoryResponse,
+    )
     async def getMessageHistory(
-        peer_id: Annotated[str, Query(min_length=1, max_length=64)],
+        conversation_id: UUID,
         currentUser: Annotated[UserIdentity, Depends(currentUserDependency)],
         limit: Annotated[
             int,
@@ -108,7 +114,7 @@ def createHistoryRouter(
             page = await historyService.getPage(
                 MessageHistoryQuery(
                     user_id=str(currentUser.user_id),
-                    peer_id=peer_id,
+                    conversation_id=conversation_id,
                     cursor=decodedCursor,
                     limit=limit,
                 )
@@ -121,7 +127,15 @@ def createHistoryRouter(
                     "message": str(error),
                 },
             ) from error
-        except MessageStorageError as error:
+        except ConversationUnavailable as error:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "code": "conversation_unavailable",
+                    "message": "无法创建或访问该会话",
+                },
+            ) from error
+        except (ConversationStorageError, MessageStorageError) as error:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail={
@@ -135,6 +149,7 @@ def createHistoryRouter(
                 HistoryMessageItem(
                     server_message_id=message.message_id.value,
                     client_message_id=message.client_message_id.value,
+                    conversation_id=message.conversation_id.value,
                     sender_id=message.sender_id.value,
                     recipient_id=message.recipient_id.value,
                     content=message.content.value,

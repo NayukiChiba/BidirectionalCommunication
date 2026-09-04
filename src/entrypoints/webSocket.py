@@ -45,18 +45,9 @@ class SendMessagePayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     type: Literal["send_message"]
-    recipient_id: str = Field(min_length=1, max_length=64)
+    conversation_id: UUID
     content: str = Field(min_length=1, max_length=2000)
     client_message_id: UUID
-
-    @field_validator("recipient_id")
-    @classmethod
-    def validate_recipient_id(cls, recipient_id: str) -> str:
-        """规范化并拒绝空白接收者标识。"""
-        normalized_recipient_id = recipient_id.strip()
-        if not normalized_recipient_id:
-            raise ValueError("接收者的 ID 不能为空")
-        return normalized_recipient_id
 
     @field_validator("content")
     @classmethod
@@ -137,7 +128,7 @@ def create_router(
 
                 command = SendMessageCommand(
                     sender_id=user_id,
-                    recipient_id=payload.recipient_id,
+                    conversation_id=payload.conversation_id,
                     content=payload.content,
                     client_message_id=payload.client_message_id,
                 )
@@ -160,7 +151,7 @@ def create_router(
                 error_by_status = {
                     SendMessageStatus.RECIPIENT_OFFLINE: (
                         "recipient_offline",
-                        f"用户 {payload.recipient_id} 不在线",
+                        "会话中的另一名用户不在线",
                     ),
                     SendMessageStatus.DELIVERY_FAILED: (
                         "delivery_failed",
@@ -173,6 +164,10 @@ def create_router(
                     SendMessageStatus.INVALID_MESSAGE: (
                         "invalid_message",
                         "消息字段验证失败",
+                    ),
+                    SendMessageStatus.CONVERSATION_UNAVAILABLE: (
+                        "conversation_unavailable",
+                        "无法创建或访问该会话",
                     ),
                 }
                 error_code, error_message = error_by_status[result.status]
