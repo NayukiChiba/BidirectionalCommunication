@@ -18,6 +18,7 @@ from tests.conftest import AuthenticatedTestUser
 def test_bidirectional_message_send_and_receive(
     testClient: TestClient,
     authenticatedUsers: dict[str, AuthenticatedTestUser],
+    conversationId: str,
 ) -> None:
     """
     测试双向多消息
@@ -46,7 +47,7 @@ def test_bidirectional_message_send_and_receive(
                 user_a_websocket.send_json(
                     {
                         "type": "send_message",
-                        "recipient_id": userB.userId,
+                        "conversation_id": conversationId,
                         "content": "Hello World",
                         "client_message_id": clientMessageId,
                     }
@@ -58,7 +59,7 @@ def test_bidirectional_message_send_and_receive(
             user_b_websocket.send_json(
                 {
                     "type": "send_message",
-                    "recipient_id": userA.userId,
+                    "conversation_id": conversationId,
                     "content": "Hello World",
                     "client_message_id": user_b_client_message_id,
                 }
@@ -99,6 +100,7 @@ def test_bidirectional_message_send_and_receive(
 def test_deliver_message_and_acknowledge_sender(
     testClient: TestClient,
     authenticatedUsers: dict[str, AuthenticatedTestUser],
+    conversationId: str,
 ) -> None:
     """测试接收方收到消息且发送方收到确认"""
     client_message_id = "5cbe59a7-1c45-4dd9-9302-d9eb2586bb6b"
@@ -114,7 +116,7 @@ def test_deliver_message_and_acknowledge_sender(
             sender_websocket.send_json(
                 {
                     "type": "send_message",
-                    "recipient_id": userB.userId,
+                    "conversation_id": conversationId,
                     "content": "Hello World",
                     "client_message_id": client_message_id,
                 }
@@ -137,6 +139,7 @@ def test_deliver_message_and_acknowledge_sender(
 def test_send_message_to_offline_recipient(
     testClient: TestClient,
     authenticatedUsers: dict[str, AuthenticatedTestUser],
+    conversationId: str,
 ) -> None:
     """测试向离线用户发送时发送方收到稳定错误"""
     client_message_id = "dd57b26c-5233-45d1-bf24-5bdc2f0fc68f"
@@ -149,7 +152,7 @@ def test_send_message_to_offline_recipient(
         sender_websocket.send_json(
             {
                 "type": "send_message",
-                "recipient_id": userB.userId,
+                "conversation_id": conversationId,
                 "content": "Hello",
                 "client_message_id": client_message_id,
             }
@@ -161,34 +164,20 @@ def test_send_message_to_offline_recipient(
     assert error_event["client_message_id"] == client_message_id
 
 
-def test_allow_self_message(
+def test_reject_self_conversation(
     testClient: TestClient,
     authenticatedUsers: dict[str, AuthenticatedTestUser],
 ) -> None:
-    """测试明确允许用户向自己发送消息"""
-    client_message_id = "819145f5-5ddb-4ae1-a382-f81fb81e6f08"
-
+    """一对一会话必须包含两名不同用户。"""
     user = authenticatedUsers["user-a"]
-    with testClient.websocket_connect(
-        "/ws", headers=user.authorizationHeaders
-    ) as websocket:
-        websocket.send_json(
-            {
-                "type": "send_message",
-                "recipient_id": user.userId,
-                "content": "写给自己",
-                "client_message_id": client_message_id,
-            }
-        )
-        message_event = websocket.receive_json()
-        ack_event = websocket.receive_json()
+    response = testClient.post(
+        "/conversations",
+        json={"peer_id": user.userId},
+        headers=user.authorizationHeaders,
+    )
 
-    assert message_event["type"] == "message"
-    assert message_event["sender_id"] == user.userId
-    assert message_event["recipient_id"] == user.userId
-    assert message_event["client_message_id"] == client_message_id
-    assert ack_event["type"] == "ack"
-    assert ack_event["server_message_id"] == message_event["server_message_id"]
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "invalid_conversation"
 
 
 def test_disconnect_cleans_endpoint_connection(

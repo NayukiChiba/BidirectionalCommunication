@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncIterator
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
 
@@ -18,6 +19,7 @@ from sqlalchemy.ext.asyncio import (
 from src.adapters.database import (
     AsyncSqlAlchemyMessageUnitOfWork,
     AsyncSqlAlchemyMessageUnitOfWorkFactory,
+    ConversationRecord,
     MessageRecord,
     createAsyncSessionFactory,
     createAsyncSqliteEngine,
@@ -27,11 +29,14 @@ from src.application import MessageStorageConflictError
 from src.domain import (
     ChatMessage,
     ClientMessageId,
+    ConversationId,
     MessageContent,
     MessageId,
     UserId,
 )
 from src.domain import create_chat_message as createChatMessage
+
+TEST_CONVERSATION_ID = UUID("90000000-0000-0000-0000-000000000009")
 
 
 @pytest_asyncio.fixture
@@ -40,6 +45,15 @@ async def databaseEngine(tmp_path: Path) -> AsyncIterator[AsyncEngine]:
     databasePath = tmp_path / "unit-of-work.sqlite3"
     command.upgrade(createMigrationConfig(databasePath), "head")
     engine = createAsyncSqliteEngine(databasePath)
+    sessionFactory = createAsyncSessionFactory(engine)
+    async with sessionFactory.begin() as session:
+        session.add(
+            ConversationRecord(
+                conversationId=str(TEST_CONVERSATION_ID),
+                memberPairKey="duplicate-sender:recipient",
+                createdAt=datetime.now(timezone.utc),
+            )
+        )
     try:
         yield engine
     finally:
@@ -58,6 +72,7 @@ def createMessage(*, messageId: UUID, clientMessageId: UUID) -> ChatMessage:
     """创建可以控制服务端和客户端标识的领域消息。"""
     message = createChatMessage(
         client_message_id=ClientMessageId(clientMessageId),
+        conversation_id=ConversationId(TEST_CONVERSATION_ID),
         sender_id=UserId("duplicate-sender"),
         recipient_id=UserId("recipient"),
         content=MessageContent("提交失败测试"),
@@ -65,6 +80,7 @@ def createMessage(*, messageId: UUID, clientMessageId: UUID) -> ChatMessage:
     return ChatMessage(
         message_id=MessageId(messageId),
         client_message_id=message.client_message_id,
+        conversation_id=message.conversation_id,
         sender_id=message.sender_id,
         recipient_id=message.recipient_id,
         content=message.content,

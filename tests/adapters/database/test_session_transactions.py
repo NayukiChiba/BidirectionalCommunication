@@ -1,7 +1,7 @@
 """AsyncSession 提交、回滚和关闭行为集成测试。"""
 
 from collections.abc import AsyncIterator
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from src.adapters.database import (
+    ConversationRecord,
     MessageRecord,
     createAsyncSessionFactory,
     createAsyncSqliteEngine,
@@ -24,7 +25,15 @@ from src.adapters.database import (
     toMessageRecord,
 )
 from src.adapters.database.migrationConfig import createMigrationConfig
-from src.domain import ClientMessageId, MessageContent, UserId, create_chat_message
+from src.domain import (
+    ClientMessageId,
+    ConversationId,
+    MessageContent,
+    UserId,
+    create_chat_message,
+)
+
+TEST_CONVERSATION_ID = UUID("90000000-0000-0000-0000-000000000009")
 
 
 @pytest_asyncio.fixture
@@ -33,6 +42,15 @@ async def databaseEngine(tmp_path: Path) -> AsyncIterator[AsyncEngine]:
     databasePath = tmp_path / "nested" / "messages.sqlite3"
     command.upgrade(createMigrationConfig(databasePath), "head")
     engine = createAsyncSqliteEngine(databasePath)
+    sessionFactory = createAsyncSessionFactory(engine)
+    async with sessionFactory.begin() as session:
+        session.add(
+            ConversationRecord(
+                conversationId=str(TEST_CONVERSATION_ID),
+                memberPairKey="sender-a:recipient-b",
+                createdAt=datetime.now(timezone.utc),
+            )
+        )
     try:
         yield engine
     finally:
@@ -57,6 +75,7 @@ def createRecord(
         client_message_id=ClientMessageId(
             clientMessageId if clientMessageId is not None else uuid4()
         ),
+        conversation_id=ConversationId(TEST_CONVERSATION_ID),
         sender_id=UserId(senderId),
         recipient_id=UserId("recipient-b"),
         content=MessageContent("事务测试消息"),

@@ -15,10 +15,14 @@ from src.application import (
 from src.domain import (
     ChatMessage,
     ClientMessageId,
+    Conversation,
+    ConversationId,
     MessageContent,
     MessageId,
     UserId,
 )
+
+TEST_CONVERSATION_ID = UUID("90000000-0000-0000-0000-000000000009")
 
 
 class StubMessageRepository:
@@ -29,10 +33,9 @@ class StubMessageRepository:
         self.requestedLimit: int | None = None
         self.requestedCursor: MessageCursor | None = None
 
-    async def listConversation(
+    async def listByConversation(
         self,
-        userId: UserId,
-        peerId: UserId,
+        conversationId: ConversationId,
         *,
         cursor: MessageCursor | None,
         limit: int,
@@ -79,11 +82,49 @@ class StubMessageUnitOfWorkFactory:
         return StubMessageUnitOfWork(self._repository)
 
 
+class StubConversationRepository:
+    """返回固定的两人会话。"""
+
+    async def getById(self, conversationId: ConversationId) -> Conversation | None:
+        if conversationId.value != TEST_CONVERSATION_ID:
+            return None
+        return Conversation(
+            conversation_id=conversationId,
+            members=frozenset((UserId("user-a"), UserId("user-b"))),
+            created_at=datetime.now(timezone.utc),
+        )
+
+
+class StubConversationUnitOfWork:
+    """提供只读会话 Repository。"""
+
+    conversations = StubConversationRepository()
+
+    async def __aenter__(self) -> "StubConversationUnitOfWork":
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+
+class StubConversationUnitOfWorkFactory:
+    """创建只读会话工作单元。"""
+
+    def __call__(self) -> StubConversationUnitOfWork:
+        return StubConversationUnitOfWork()
+
+
+def createService(factory: StubMessageUnitOfWorkFactory) -> GetMessageHistoryService:
+    """组装带成员授权的历史查询服务。"""
+    return GetMessageHistoryService(factory, StubConversationUnitOfWorkFactory())
+
+
 def createMessage(sequence: int) -> ChatMessage:
     """创建按序号区分的固定时间领域消息。"""
     return ChatMessage(
         message_id=MessageId(UUID(int=sequence)),
         client_message_id=ClientMessageId(UUID(int=sequence + 100)),
+        conversation_id=ConversationId(TEST_CONVERSATION_ID),
         sender_id=UserId("user-a"),
         recipient_id=UserId("user-b"),
         content=MessageContent(f"message-{sequence}"),
@@ -97,10 +138,14 @@ async def test_history_service_requests_one_extra_message_for_has_more() -> None
     messages = tuple(createMessage(sequence) for sequence in range(1, 4))
     repository = StubMessageRepository(messages)
     unitOfWorkFactory = StubMessageUnitOfWorkFactory(repository)
-    service = GetMessageHistoryService(unitOfWorkFactory)
+    service = createService(unitOfWorkFactory)
 
     page = await service.getPage(
-        MessageHistoryQuery(user_id="user-a", peer_id="user-b", limit=2)
+        MessageHistoryQuery(
+            user_id="user-a",
+            conversation_id=TEST_CONVERSATION_ID,
+            limit=2,
+        )
     )
 
     assert page.messages == messages[:2]
@@ -114,10 +159,13 @@ async def test_history_service_requests_one_extra_message_for_has_more() -> None
 async def test_history_service_returns_empty_page() -> None:
     """没有历史时应返回空消息和空下一游标。"""
     repository = StubMessageRepository(())
-    service = GetMessageHistoryService(StubMessageUnitOfWorkFactory(repository))
+    service = createService(StubMessageUnitOfWorkFactory(repository))
 
     page = await service.getPage(
-        MessageHistoryQuery(user_id="user-a", peer_id="user-b")
+        MessageHistoryQuery(
+            user_id="user-a",
+            conversation_id=TEST_CONVERSATION_ID,
+        )
     )
 
     assert page.messages == ()
@@ -131,13 +179,13 @@ async def test_history_service_rejects_invalid_page_size(limit: object) -> None:
     """分页大小必须是 1 到 100 之间的整数。"""
     repository = StubMessageRepository(())
     unitOfWorkFactory = StubMessageUnitOfWorkFactory(repository)
-    service = GetMessageHistoryService(unitOfWorkFactory)
+    service = createService(unitOfWorkFactory)
 
     with pytest.raises(InvalidMessageHistoryQuery):
         await service.getPage(
             MessageHistoryQuery(
                 user_id="user-a",
-                peer_id="user-b",
+                conversation_id=TEST_CONVERSATION_ID,
                 limit=limit,  # type: ignore[arg-type]
             )
         )

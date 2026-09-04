@@ -76,3 +76,18 @@ def authenticatedUsers(
             accessToken=login.json()["access_token"],
         )
     return users
+
+
+@pytest.fixture
+def conversationId(
+    testClient: TestClient,
+    authenticatedUsers: dict[str, AuthenticatedTestUser],
+) -> str:
+    """创建常用测试用户之间的唯一一对一会话。"""
+    response = testClient.post(
+        "/conversations",
+        json={"peer_id": authenticatedUsers["user-b"].userId},
+        headers=authenticatedUsers["user-a"].authorizationHeaders,
+    )
+    assert response.status_code == 200
+    return response.json()["conversation_id"]

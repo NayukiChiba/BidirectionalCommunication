@@ -19,6 +19,7 @@ from src.adapters.database.migrationConfig import (
 from src.domain import (
     ChatMessage,
     ClientMessageId,
+    ConversationId,
     MessageContent,
     MessageId,
     UserId,
@@ -30,6 +31,7 @@ def createMessage() -> ChatMessage:
     return ChatMessage(
         message_id=MessageId(UUID("10000000-0000-0000-0000-000000000001")),
         client_message_id=ClientMessageId(UUID("20000000-0000-0000-0000-000000000002")),
+        conversation_id=ConversationId(UUID("30000000-0000-0000-0000-000000000003")),
         sender_id=UserId("sender-a"),
         recipient_id=UserId("recipient-b"),
         content=MessageContent("测试消息"),
@@ -57,6 +59,7 @@ def test_message_table_has_explained_constraints_and_index(tmp_path) -> None:
         assert set(columns) == {
             "message_id",
             "client_message_id",
+            "conversation_id",
             "sender_id",
             "recipient_id",
             "content",
@@ -80,8 +83,8 @@ def test_message_table_has_explained_constraints_and_index(tmp_path) -> None:
         indexes = inspector.get_indexes("messages")
         assert {(index["name"], tuple(index["column_names"])) for index in indexes} == {
             (
-                "ix_messages_sender_recipient_created_message",
-                ("sender_id", "recipient_id", "created_at", "message_id"),
+                "ix_messages_conversation_created_message",
+                ("conversation_id", "created_at", "message_id"),
             ),
         }
 
@@ -110,6 +113,7 @@ def test_message_conversion_keeps_domain_separate_from_orm() -> None:
     assert isinstance(record, MessageRecord)
     assert restoredMessage == message
     assert restoredMessage.client_message_id == message.client_message_id
+    assert restoredMessage.conversation_id == message.conversation_id
     assert restoredMessage.sender_id == message.sender_id
     assert restoredMessage.recipient_id == message.recipient_id
     assert restoredMessage.content == message.content

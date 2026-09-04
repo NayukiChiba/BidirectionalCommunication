@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from src.adapters import InMemoryMessageUnitOfWorkFactory
 from src.adapters.database import (
     AsyncSqlAlchemyMessageUnitOfWorkFactory,
+    ConversationRecord,
     MessageRecord,
     createAsyncSessionFactory,
     createAsyncSqliteEngine,
@@ -25,11 +26,14 @@ from src.application import MessageCursor, MessageUnitOfWorkFactory
 from src.domain import (
     ChatMessage,
     ClientMessageId,
+    ConversationId,
     MessageContent,
     MessageId,
     UserId,
 )
 from src.domain import create_chat_message as createChatMessage
+
+TEST_CONVERSATION_ID = UUID("90000000-0000-0000-0000-000000000009")
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +63,21 @@ async def unitOfWorkBackend(
     command.upgrade(createMigrationConfig(databasePath), "head")
     engine = createAsyncSqliteEngine(databasePath)
     sessionFactory = createAsyncSessionFactory(engine)
+    async with sessionFactory.begin() as session:
+        session.add(
+            ConversationRecord(
+                conversationId=str(TEST_CONVERSATION_ID),
+                memberPairKey="contract-sender:contract-recipient",
+                createdAt=datetime.now(timezone.utc),
+            )
+        )
+        session.add(
+            ConversationRecord(
+                conversationId="80000000-0000-0000-0000-000000000008",
+                memberPairKey="contract-sender:unrelated-user",
+                createdAt=datetime.now(timezone.utc),
+            )
+        )
 
     async def loadDatabaseMessages() -> tuple[ChatMessage, ...]:
         return await loadSqlAlchemyMessages(sessionFactory)
@@ -76,6 +95,7 @@ def createMessage(content: str = "契约测试消息") -> ChatMessage:
     """创建共同契约使用的领域消息。"""
     return createChatMessage(
         client_message_id=ClientMessageId(uuid4()),
+        conversation_id=ConversationId(TEST_CONVERSATION_ID),
         sender_id=UserId("contract-sender"),
         recipient_id=UserId("contract-recipient"),
         content=MessageContent(content),
@@ -93,6 +113,11 @@ def createFixedMessage(
     return ChatMessage(
         message_id=MessageId(UUID(int=messageSequence)),
         client_message_id=ClientMessageId(UUID(int=messageSequence + 100)),
+        conversation_id=ConversationId(
+            TEST_CONVERSATION_ID
+            if recipientId != "unrelated-user"
+            else UUID("80000000-0000-0000-0000-000000000008")
+        ),
         sender_id=UserId(senderId),
         recipient_id=UserId(recipientId),
         content=MessageContent(f"message-{messageSequence}"),
@@ -213,21 +238,18 @@ async def test_conversation_cursor_is_stable_for_same_timestamp(
         await unitOfWork.commit()
 
     async with unitOfWorkBackend.factory() as unitOfWork:
-        firstPage = await unitOfWork.messages.listConversation(
-            UserId("user-a"),
-            UserId("user-b"),
+        firstPage = await unitOfWork.messages.listByConversation(
+            ConversationId(TEST_CONVERSATION_ID),
             cursor=None,
             limit=2,
         )
-        secondPage = await unitOfWork.messages.listConversation(
-            UserId("user-a"),
-            UserId("user-b"),
+        secondPage = await unitOfWork.messages.listByConversation(
+            ConversationId(TEST_CONVERSATION_ID),
             cursor=MessageCursor.fromMessage(firstPage[-1]),
             limit=2,
         )
-        emptyPage = await unitOfWork.messages.listConversation(
-            UserId("user-a"),
-            UserId("user-b"),
+        emptyPage = await unitOfWork.messages.listByConversation(
+            ConversationId(TEST_CONVERSATION_ID),
             cursor=MessageCursor.fromMessage(secondPage[-1]),
             limit=2,
         )

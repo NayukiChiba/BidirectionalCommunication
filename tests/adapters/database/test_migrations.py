@@ -12,7 +12,7 @@ from src.adapters.database.migrationConfig import (
 )
 from src.config import PROJECT_ROOT
 
-HEAD_REVISION = "f53ad4a832a9"
+HEAD_REVISION = "c18a4f7d2e91"
 
 
 def getCurrentRevision(databasePath: Path) -> str | None:
@@ -45,6 +45,8 @@ def test_upgrade_empty_database_to_head(tmp_path: Path) -> None:
         "alembic_version",
         "messages",
         "users",
+        "conversations",
+        "conversation_members",
     }
     assert getCurrentRevision(databasePath) == HEAD_REVISION
 
@@ -66,6 +68,8 @@ def test_downgrade_then_upgrade_restores_target_schema(tmp_path: Path) -> None:
         "alembic_version",
         "messages",
         "users",
+        "conversations",
+        "conversation_members",
     }
     assert getCurrentRevision(databasePath) == HEAD_REVISION
 
@@ -77,6 +81,85 @@ def test_migration_history_matches_orm_metadata(tmp_path: Path) -> None:
     command.upgrade(migrationConfig, "head")
 
     command.check(migrationConfig)
+
+
+def test_conversation_migration_backfills_existing_bidirectional_messages(
+    tmp_path: Path,
+) -> None:
+    """旧双向消息应归入同一个稳定会话并生成两个成员。"""
+    databasePath = tmp_path / "backfill.sqlite3"
+    migrationConfig = createMigrationConfig(databasePath)
+    command.upgrade(migrationConfig, "f53ad4a832a9")
+    firstUserId = "10000000-0000-0000-0000-000000000001"
+    secondUserId = "20000000-0000-0000-0000-000000000002"
+    engine = createMigrationEngine(databasePath)
+    try:
+        with engine.begin() as connection:
+            for userId, username in (
+                (firstUserId, "user-a"),
+                (secondUserId, "user-b"),
+            ):
+                connection.execute(
+                    text(
+                        "INSERT INTO users "
+                        "(user_id, username, password_hash, created_at) "
+                        "VALUES (:userId, :username, 'test-hash', :createdAt)"
+                    ),
+                    {
+                        "userId": userId,
+                        "username": username,
+                        "createdAt": "2026-09-04 12:00:00",
+                    },
+                )
+            for sequence, senderId, recipientId in (
+                (1, firstUserId, secondUserId),
+                (2, secondUserId, firstUserId),
+            ):
+                connection.execute(
+                    text(
+                        "INSERT INTO messages "
+                        "(message_id, client_message_id, sender_id, recipient_id, "
+                        "content, created_at) VALUES (:messageId, :clientMessageId, "
+                        ":senderId, :recipientId, :content, :createdAt)"
+                    ),
+                    {
+                        "messageId": f"{sequence:08d}-0000-0000-0000-000000000000",
+                        "clientMessageId": (
+                            f"{sequence + 10:08d}-0000-0000-0000-000000000000"
+                        ),
+                        "senderId": senderId,
+                        "recipientId": recipientId,
+                        "content": f"message-{sequence}",
+                        "createdAt": f"2026-09-04 12:00:0{sequence}",
+                    },
+                )
+    finally:
+        engine.dispose()
+
+    command.upgrade(migrationConfig, "head")
+
+    engine = createMigrationEngine(databasePath)
+    try:
+        with engine.connect() as connection:
+            conversationCount = connection.scalar(
+                text("SELECT COUNT(*) FROM conversations")
+            )
+            memberCount = connection.scalar(
+                text("SELECT COUNT(*) FROM conversation_members")
+            )
+            conversationIds = (
+                connection.execute(
+                    text("SELECT DISTINCT conversation_id FROM messages")
+                )
+                .scalars()
+                .all()
+            )
+    finally:
+        engine.dispose()
+
+    assert conversationCount == 1
+    assert memberCount == 2
+    assert len(conversationIds) == 1
 
 
 def test_migration_scripts_do_not_import_web_runtime() -> None:

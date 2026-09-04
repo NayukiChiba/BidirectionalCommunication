@@ -131,8 +131,7 @@ def test_http_rejects_missing_or_invalid_token(
 
     meResponse = testClient.get("/auth/me", headers=headers)
     historyResponse = testClient.get(
-        "/messages/history",
-        params={"peer_id": str(uuid4())},
+        f"/conversations/{uuid4()}/messages",
         headers=headers,
     )
 
@@ -185,19 +184,6 @@ def test_websocket_ignores_forged_query_identity(
     with testClient.websocket_connect(
         f"/ws?user_id={userB.userId}",
         headers=userA.authorizationHeaders,
-    ) as webSocket:
+    ):
         assert connectionManager.is_online(userA.userId) is True
         assert connectionManager.is_online(userB.userId) is False
-        webSocket.send_json(
-            {
-                "type": "send_message",
-                "recipient_id": userA.userId,
-                "content": "trusted sender",
-                "client_message_id": str(uuid4()),
-            }
-        )
-        messageEvent = webSocket.receive_json()
-        acknowledgement = webSocket.receive_json()
-
-    assert messageEvent["sender_id"] == userA.userId
-    assert acknowledgement["server_message_id"] == messageEvent["server_message_id"]

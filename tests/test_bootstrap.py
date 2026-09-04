@@ -37,10 +37,12 @@ def test_create_app_composes_dependencies_and_routes(tmp_path: Path) -> None:
     assert isinstance(app.state.database_engine, AsyncEngine)
     assert app.state.session_factory is not None
     assert app.state.unit_of_work_factory is not None
+    assert app.state.conversation_unit_of_work_factory is not None
     assert app.state.message_notifier is not None
     assert app.state.send_message_service is not None
     assert app.state.history_service is not None
     assert app.state.authentication_service is not None
+    assert app.state.conversation_service is not None
     with TestClient(app) as client:
         response = client.get("/health")
         assert response.status_code == 200
@@ -48,6 +50,8 @@ def test_create_app_composes_dependencies_and_routes(tmp_path: Path) -> None:
         try:
             assert inspect(inspectionEngine).has_table("messages")
             assert inspect(inspectionEngine).has_table("users")
+            assert inspect(inspectionEngine).has_table("conversations")
+            assert inspect(inspectionEngine).has_table("conversation_members")
         finally:
             inspectionEngine.dispose()
 

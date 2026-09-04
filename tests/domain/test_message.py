@@ -13,6 +13,7 @@ import src.domain.message as message_module
 from src.domain import (
     ChatMessage,
     ClientMessageId,
+    ConversationId,
     InvalidChatMessage,
     InvalidClientMessageId,
     InvalidMessageContent,
@@ -134,6 +135,7 @@ def make_chat_message(
     return ChatMessage(
         message_id=message_id or MessageId(uuid4()),
         client_message_id=ClientMessageId(uuid4()),
+        conversation_id=ConversationId(uuid4()),
         sender_id=sender_id or UserId("user-a"),
         recipient_id=recipient_id or UserId("user-b"),
         content=content or MessageContent("Hello"),
@@ -148,6 +150,7 @@ def test_chat_message_uses_message_id_as_entity_identity() -> None:
     second_message = ChatMessage(
         message_id=message_id,
         client_message_id=ClientMessageId(uuid4()),
+        conversation_id=ConversationId(uuid4()),
         sender_id=UserId("another-sender"),
         recipient_id=UserId("another-recipient"),
         content=MessageContent("Different content"),
@@ -193,6 +196,7 @@ def test_chat_message_requires_domain_value_objects() -> None:
         ChatMessage(
             message_id=uuid4(),  # type: ignore[arg-type]
             client_message_id=ClientMessageId(uuid4()),
+            conversation_id=ConversationId(uuid4()),
             sender_id=UserId("user-a"),
             recipient_id=UserId("user-b"),
             content=MessageContent("Hello"),
@@ -204,6 +208,7 @@ def test_create_chat_message_generates_identity_and_utc_time() -> None:
     """消息创建函数应补充服务端身份和 UTC 创建时间。"""
     message = create_chat_message(
         client_message_id=ClientMessageId(uuid4()),
+        conversation_id=ConversationId(uuid4()),
         sender_id=UserId("user-a"),
         recipient_id=UserId("user-b"),
         content=MessageContent("Hello"),

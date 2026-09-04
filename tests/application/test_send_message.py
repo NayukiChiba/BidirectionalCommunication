@@ -23,10 +23,60 @@ from src.application import (
 from src.domain import (
     ChatMessage,
     ClientMessageId,
+    Conversation,
+    ConversationId,
     MessageContent,
     MessageId,
     UserId,
 )
+
+TEST_CONVERSATION_ID = UUID("90000000-0000-0000-0000-000000000009")
+
+
+class FakeConversationRepository:
+    """为发送用例返回固定会话聚合。"""
+
+    def __init__(self, conversation: Conversation | None) -> None:
+        self._conversation = conversation
+
+    async def getById(
+        self,
+        conversationId: ConversationId,
+    ) -> Conversation | None:
+        """只在会话 ID 匹配时返回聚合。"""
+        if (
+            self._conversation is not None
+            and self._conversation.conversation_id == conversationId
+        ):
+            return self._conversation
+        return None
+
+
+class FakeConversationUnitOfWork:
+    """提供只读会话 Repository。"""
+
+    def __init__(self, conversation: Conversation | None) -> None:
+        self.conversations = FakeConversationRepository(conversation)
+
+    async def __aenter__(self) -> "FakeConversationUnitOfWork":
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+
+class FakeConversationUnitOfWorkFactory:
+    """为每次发送创建固定会话工作单元。"""
+
+    def __init__(self, conversation: Conversation | None = None) -> None:
+        self._conversation = conversation or Conversation(
+            conversation_id=ConversationId(TEST_CONVERSATION_ID),
+            members=frozenset((UserId("user-a"), UserId("user-b"))),
+            created_at=datetime.now(timezone.utc),
+        )
+
+    def __call__(self) -> FakeConversationUnitOfWork:
+        return FakeConversationUnitOfWork(self._conversation)
 
 
 class FakeMessageRepository:
@@ -165,16 +215,31 @@ class FakeMessageNotifier:
 def makeCommand(
     *,
     senderId: str = "user-a",
-    recipientId: str = "user-b",
+    conversationId: UUID = TEST_CONVERSATION_ID,
     content: str = "Hello",
     clientMessageId: UUID | None = None,
 ) -> SendMessageCommand:
     """创建具有合法默认值的应用命令。"""
     return SendMessageCommand(
         sender_id=senderId,
-        recipient_id=recipientId,
+        conversation_id=conversationId,
         content=content,
         client_message_id=(clientMessageId if clientMessageId is not None else uuid4()),
+    )
+
+
+def createService(
+    unitOfWorkFactory: object,
+    notifier: FakeMessageNotifier,
+    *,
+    conversation: Conversation | None = None,
+) -> SendMessageService:
+    """组装带固定会话授权边界的发送服务。"""
+    conversationFactory = FakeConversationUnitOfWorkFactory(conversation)
+    return SendMessageService(
+        unitOfWorkFactory,  # type: ignore[arg-type]
+        conversationFactory,
+        notifier,
     )
 
 
@@ -183,7 +248,7 @@ async def test_send_message_commits_before_delivering_domain_message() -> None:
     """成功用例应提交消息后再投递同一领域实体。"""
     unitOfWorkFactory = FakeMessageUnitOfWorkFactory()
     notifier = FakeMessageNotifier(DeliveryOutcome.DELIVERED, unitOfWorkFactory.events)
-    service = SendMessageService(unitOfWorkFactory, notifier)
+    service = createService(unitOfWorkFactory, notifier)
 
     result = await service.send(makeCommand(content="  Hello  "))
 
@@ -230,7 +295,7 @@ async def test_send_message_keeps_commit_when_delivery_does_not_succeed(
     """离线或推送失败时应保留已经提交的消息。"""
     unitOfWorkFactory = FakeMessageUnitOfWorkFactory()
     notifier = FakeMessageNotifier(deliveryOutcome, unitOfWorkFactory.events)
-    service = SendMessageService(unitOfWorkFactory, notifier)
+    service = createService(unitOfWorkFactory, notifier)
 
     result = await service.send(makeCommand())
 
@@ -248,7 +313,7 @@ async def test_send_message_rolls_back_and_stops_when_repository_fails() -> None
     storageError = MessageStorageError("模拟消息保存失败")
     unitOfWorkFactory = FakeMessageUnitOfWorkFactory(storageError=storageError)
     notifier = FakeMessageNotifier(DeliveryOutcome.DELIVERED, unitOfWorkFactory.events)
-    service = SendMessageService(unitOfWorkFactory, notifier)
+    service = createService(unitOfWorkFactory, notifier)
 
     result = await service.send(makeCommand())
 
@@ -273,7 +338,7 @@ async def test_send_message_rolls_back_and_stops_when_commit_fails() -> None:
     commitError = MessageStorageError("模拟事务提交失败")
     unitOfWorkFactory = FakeMessageUnitOfWorkFactory(commitError=commitError)
     notifier = FakeMessageNotifier(DeliveryOutcome.DELIVERED, unitOfWorkFactory.events)
-    service = SendMessageService(unitOfWorkFactory, notifier)
+    service = createService(unitOfWorkFactory, notifier)
 
     result = await service.send(makeCommand())
 
@@ -300,7 +365,7 @@ async def test_unexpected_storage_exception_rolls_back_and_propagates() -> None:
         storageError=RuntimeError("未知存储异常")
     )
     notifier = FakeMessageNotifier(DeliveryOutcome.DELIVERED, unitOfWorkFactory.events)
-    service = SendMessageService(unitOfWorkFactory, notifier)
+    service = createService(unitOfWorkFactory, notifier)
 
     with pytest.raises(RuntimeError, match="未知存储异常"):
         await service.send(makeCommand())
@@ -315,7 +380,7 @@ async def test_send_message_rejects_invalid_domain_input_before_creating_uow() -
     """非法领域输入不能创建工作单元或触发通知。"""
     unitOfWorkFactory = FakeMessageUnitOfWorkFactory()
     notifier = FakeMessageNotifier(DeliveryOutcome.DELIVERED, unitOfWorkFactory.events)
-    service = SendMessageService(unitOfWorkFactory, notifier)
+    service = createService(unitOfWorkFactory, notifier)
 
     result = await service.send(makeCommand(content="   "))
 
@@ -326,17 +391,18 @@ async def test_send_message_rejects_invalid_domain_input_before_creating_uow() -
 
 
 @pytest.mark.asyncio
-async def test_send_message_allows_same_sender_and_recipient() -> None:
-    """应用用例应保留领域允许的自发消息行为。"""
+async def test_send_message_rejects_non_member() -> None:
+    """已登录但不属于目标会话的用户不能发送消息。"""
     unitOfWorkFactory = FakeMessageUnitOfWorkFactory()
     notifier = FakeMessageNotifier(DeliveryOutcome.DELIVERED, unitOfWorkFactory.events)
-    service = SendMessageService(unitOfWorkFactory, notifier)
+    service = createService(unitOfWorkFactory, notifier)
 
-    result = await service.send(makeCommand(senderId="user-a", recipientId="user-a"))
+    result = await service.send(makeCommand(senderId="user-c"))
 
-    assert result.status is SendMessageStatus.DELIVERED
-    assert result.message is not None
-    assert result.message.sender_id == result.message.recipient_id
+    assert result.status is SendMessageStatus.CONVERSATION_UNAVAILABLE
+    assert result.message is None
+    assert unitOfWorkFactory.createdUnits == []
+    assert notifier.messages == []
 
 
 @pytest.mark.asyncio
@@ -344,7 +410,7 @@ async def test_duplicate_command_returns_original_server_message() -> None:
     """重复客户端消息 ID 应返回同一条已提交消息。"""
     unitOfWorkFactory = FakeMessageUnitOfWorkFactory()
     notifier = FakeMessageNotifier(DeliveryOutcome.DELIVERED, unitOfWorkFactory.events)
-    service = SendMessageService(unitOfWorkFactory, notifier)
+    service = createService(unitOfWorkFactory, notifier)
     command = makeCommand()
 
     firstResult = await service.send(command)
@@ -364,6 +430,7 @@ async def test_concurrent_conflict_recovers_original_message() -> None:
     originalMessage = ChatMessage(
         message_id=MessageId(uuid4()),
         client_message_id=ClientMessageId(clientMessageId),
+        conversation_id=ConversationId(TEST_CONVERSATION_ID),
         sender_id=UserId("user-a"),
         recipient_id=UserId("user-b"),
         content=MessageContent("Hello"),
@@ -387,7 +454,7 @@ async def test_concurrent_conflict_recovers_original_message() -> None:
             return unitOfWorks.pop(0)
 
     notifier = FakeMessageNotifier(DeliveryOutcome.DELIVERED, events)
-    service = SendMessageService(ConflictRecoveryFactory(), notifier)
+    service = createService(ConflictRecoveryFactory(), notifier)
 
     result = await service.send(makeCommand(clientMessageId=clientMessageId))
 

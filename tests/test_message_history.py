@@ -12,6 +12,7 @@ from src.adapters.database.models import MessageRecord
 from src.domain import (
     ChatMessage,
     ClientMessageId,
+    ConversationId,
     MessageContent,
     MessageId,
     UserId,
@@ -25,11 +26,13 @@ def createMessage(
     senderId: str,
     recipientId: str,
     createdAt: datetime,
+    conversationId: str,
 ) -> ChatMessage:
     """创建具有固定游标顺序的验收消息。"""
     return ChatMessage(
         message_id=MessageId(UUID(int=sequence)),
         client_message_id=ClientMessageId(UUID(int=sequence + 100)),
+        conversation_id=ConversationId(UUID(conversationId)),
         sender_id=UserId(senderId),
         recipient_id=UserId(recipientId),
         content=MessageContent(f"message-{sequence}"),
@@ -45,6 +48,7 @@ def saveMessages(application: FastAPI, messages: tuple[ChatMessage, ...]) -> Non
         {
             "message_id": str(message.message_id),
             "client_message_id": str(message.client_message_id),
+            "conversation_id": str(message.conversation_id),
             "sender_id": str(message.sender_id),
             "recipient_id": str(message.recipient_id),
             "content": str(message.content),
@@ -59,6 +63,21 @@ def saveMessages(application: FastAPI, messages: tuple[ChatMessage, ...]) -> Non
         engine.dispose()
 
 
+def createConversation(
+    testClient: TestClient,
+    currentUser: AuthenticatedTestUser,
+    peer: AuthenticatedTestUser,
+) -> str:
+    """通过公开接口创建会话并返回稳定会话 ID。"""
+    response = testClient.post(
+        "/conversations",
+        json={"peer_id": peer.userId},
+        headers=currentUser.authorizationHeaders,
+    )
+    assert response.status_code == 200
+    return response.json()["conversation_id"]
+
+
 def test_history_returns_empty_page(
     testClient: TestClient,
     authenticatedUsers: dict[str, AuthenticatedTestUser],
@@ -66,9 +85,9 @@ def test_history_returns_empty_page(
     """没有单聊历史时返回空页。"""
     userA = authenticatedUsers["user-a"]
     userB = authenticatedUsers["user-b"]
+    conversationId = createConversation(testClient, userA, userB)
     response = testClient.get(
-        "/messages/history",
-        params={"peer_id": userB.userId},
+        f"/conversations/{conversationId}/messages",
         headers=userA.authorizationHeaders,
     )
 
@@ -89,44 +108,41 @@ def test_history_cursor_has_no_duplicates_or_gaps_for_same_timestamp(
     createdAt = datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc)
     userA = authenticatedUsers["user-a"]
     userB = authenticatedUsers["user-b"]
+    conversationId = createConversation(testClient, userA, userB)
     messages = (
         createMessage(
             sequence=3,
             senderId=userA.userId,
             recipientId=userB.userId,
             createdAt=createdAt,
+            conversationId=conversationId,
         ),
         createMessage(
             sequence=1,
             senderId=userB.userId,
             recipientId=userA.userId,
             createdAt=createdAt,
+            conversationId=conversationId,
         ),
         createMessage(
             sequence=2,
             senderId=userA.userId,
             recipientId=userB.userId,
             createdAt=createdAt,
-        ),
-        createMessage(
-            sequence=4,
-            senderId=userA.userId,
-            recipientId="other-user",
-            createdAt=createdAt,
+            conversationId=conversationId,
         ),
     )
     saveMessages(application, messages)
 
     firstResponse = testClient.get(
-        "/messages/history",
-        params={"peer_id": userB.userId, "limit": 2},
+        f"/conversations/{conversationId}/messages",
+        params={"limit": 2},
         headers=userA.authorizationHeaders,
     )
     firstPage = firstResponse.json()
     secondResponse = testClient.get(
-        "/messages/history",
+        f"/conversations/{conversationId}/messages",
         params={
-            "peer_id": userB.userId,
             "limit": 2,
             "cursor": firstPage["next_cursor"],
         },
@@ -157,10 +173,10 @@ def test_history_rejects_invalid_cursor(
     """损坏或伪造的游标应返回稳定查询错误。"""
     userA = authenticatedUsers["user-a"]
     userB = authenticatedUsers["user-b"]
+    conversationId = createConversation(testClient, userA, userB)
     response = testClient.get(
-        "/messages/history",
+        f"/conversations/{conversationId}/messages",
         params={
-            "peer_id": userB.userId,
             "cursor": "not-a-valid-cursor",
         },
         headers=userA.authorizationHeaders,
@@ -179,6 +195,7 @@ def test_offline_message_can_be_pulled_after_previous_cursor(
     secondClientMessageId = "20000000-0000-0000-0000-000000000002"
     userA = authenticatedUsers["user-a"]
     userB = authenticatedUsers["user-b"]
+    conversationId = createConversation(testClient, userA, userB)
 
     with testClient.websocket_connect(
         "/ws", headers=userA.authorizationHeaders
@@ -186,7 +203,7 @@ def test_offline_message_can_be_pulled_after_previous_cursor(
         senderWebSocket.send_json(
             {
                 "type": "send_message",
-                "recipient_id": userB.userId,
+                "conversation_id": conversationId,
                 "content": "before-disconnect",
                 "client_message_id": firstClientMessageId,
             }
@@ -194,8 +211,7 @@ def test_offline_message_can_be_pulled_after_previous_cursor(
         assert senderWebSocket.receive_json()["code"] == "recipient_offline"
 
     firstPage = testClient.get(
-        "/messages/history",
-        params={"peer_id": userA.userId},
+        f"/conversations/{conversationId}/messages",
         headers=userB.authorizationHeaders,
     ).json()
     assert [item["content"] for item in firstPage["messages"]] == ["before-disconnect"]
@@ -206,7 +222,7 @@ def test_offline_message_can_be_pulled_after_previous_cursor(
         senderWebSocket.send_json(
             {
                 "type": "send_message",
-                "recipient_id": userB.userId,
+                "conversation_id": conversationId,
                 "content": "while-offline",
                 "client_message_id": secondClientMessageId,
             }
@@ -214,9 +230,8 @@ def test_offline_message_can_be_pulled_after_previous_cursor(
         assert senderWebSocket.receive_json()["code"] == "recipient_offline"
 
     missingPage = testClient.get(
-        "/messages/history",
+        f"/conversations/{conversationId}/messages",
         params={
-            "peer_id": userA.userId,
             "cursor": firstPage["next_cursor"],
         },
         headers=userB.authorizationHeaders,
@@ -234,6 +249,7 @@ def test_duplicate_websocket_command_returns_same_message_without_second_row(
     deliveredMessages = []
     userA = authenticatedUsers["user-a"]
     userB = authenticatedUsers["user-b"]
+    conversationId = createConversation(testClient, userA, userB)
 
     with testClient.websocket_connect(
         "/ws", headers=userB.authorizationHeaders
@@ -245,7 +261,7 @@ def test_duplicate_websocket_command_returns_same_message_without_second_row(
                 senderWebSocket.send_json(
                     {
                         "type": "send_message",
-                        "recipient_id": userB.userId,
+                        "conversation_id": conversationId,
                         "content": "retry-me",
                         "client_message_id": clientMessageId,
                     }
@@ -263,8 +279,7 @@ def test_duplicate_websocket_command_returns_same_message_without_second_row(
     )
 
     history = testClient.get(
-        "/messages/history",
-        params={"peer_id": userB.userId},
+        f"/conversations/{conversationId}/messages",
         headers=userA.authorizationHeaders,
     ).json()
     assert len(history["messages"]) == 1

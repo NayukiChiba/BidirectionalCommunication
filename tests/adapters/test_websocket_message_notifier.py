@@ -6,7 +6,13 @@ import pytest
 
 from src.adapters import ConnectionSendOutcome, WebSocketMessageNotifier
 from src.application import DeliveryOutcome
-from src.domain import ClientMessageId, MessageContent, UserId, create_chat_message
+from src.domain import (
+    ClientMessageId,
+    ConversationId,
+    MessageContent,
+    UserId,
+    create_chat_message,
+)
 
 
 class FakeConnectionSender:
@@ -56,6 +62,7 @@ async def test_notifier_maps_connection_outcome(
     notifier = WebSocketMessageNotifier(connection_sender)
     message = create_chat_message(
         client_message_id=ClientMessageId(uuid4()),
+        conversation_id=ConversationId(uuid4()),
         sender_id=UserId("user-a"),
         recipient_id=UserId("user-b"),
         content=MessageContent("Hello"),
@@ -71,6 +78,7 @@ async def test_notifier_maps_connection_outcome(
         "type": "message",
         "server_message_id": str(message.message_id),
         "client_message_id": str(message.client_message_id),
+        "conversation_id": str(message.conversation_id),
         "sender_id": "user-a",
         "recipient_id": "user-b",
         "content": "Hello",

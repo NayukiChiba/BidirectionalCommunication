@@ -11,6 +11,7 @@ def test_duplicate_login_replaces_old_connection(
     testClient: TestClient,
     application: FastAPI,
     authenticatedUsers: dict[str, AuthenticatedTestUser],
+    conversationId: str,
 ) -> None:
     """同一令牌重复连接时，新连接替换旧连接。"""
     clientMessageId = "819145f5-5ddb-4ae1-a382-f81fb81e6f08"
@@ -37,21 +38,15 @@ def test_duplicate_login_replaces_old_connection(
             newWebSocket.send_json(
                 {
                     "type": "send_message",
-                    "recipient_id": user.userId,
+                    "conversation_id": conversationId,
                     "content": "新连接仍然可用",
                     "client_message_id": clientMessageId,
                 }
             )
-            messageEvent = newWebSocket.receive_json()
-            acknowledgement = newWebSocket.receive_json()
+            errorEvent = newWebSocket.receive_json()
 
-            assert messageEvent["type"] == "message"
-            assert messageEvent["sender_id"] == user.userId
-            assert messageEvent["recipient_id"] == user.userId
-            assert (
-                acknowledgement["server_message_id"]
-                == messageEvent["server_message_id"]
-            )
+            assert errorEvent["type"] == "error"
+            assert errorEvent["code"] == "recipient_offline"
 
     assert connectionManager.is_online(user.userId) is False
 

@@ -27,11 +27,7 @@ def test_conversation_history_query_uses_expected_composite_index(
                     EXPLAIN QUERY PLAN
                     SELECT *
                     FROM messages
-                    WHERE (
-                        (sender_id = :userId AND recipient_id = :peerId)
-                        OR
-                        (sender_id = :peerId AND recipient_id = :userId)
-                    )
+                    WHERE conversation_id = :conversationId
                     AND (
                         created_at > :createdAt
                         OR (created_at = :createdAt AND message_id > :messageId)
@@ -41,8 +37,7 @@ def test_conversation_history_query_uses_expected_composite_index(
                     """
                 ),
                 {
-                    "userId": "user-a",
-                    "peerId": "user-b",
+                    "conversationId": "90000000-0000-0000-0000-000000000009",
                     "createdAt": "2026-09-03 12:00:00",
                     "messageId": "00000000-0000-0000-0000-000000000000",
                     "limit": 51,
@@ -52,5 +47,5 @@ def test_conversation_history_query_uses_expected_composite_index(
         engine.dispose()
 
     planDescription = "\n".join(str(row[3]) for row in planRows)
-    assert "ix_messages_sender_recipient_created_message" in planDescription
+    assert "ix_messages_conversation_created_message" in planDescription
     assert "SCAN messages" not in planDescription

@@ -9,6 +9,7 @@ from src.application import MessageRepository
 from src.domain import (
     ChatMessage,
     ClientMessageId,
+    ConversationId,
     MessageContent,
     UserId,
     create_chat_message,
@@ -19,6 +20,7 @@ def make_message(content: str = "Hello") -> ChatMessage:
     """创建用于存储测试的聊天消息。"""
     return create_chat_message(
         client_message_id=ClientMessageId(uuid4()),
+        conversation_id=ConversationId(uuid4()),
         sender_id=UserId("user-a"),
         recipient_id=UserId("user-b"),
         content=MessageContent(content),

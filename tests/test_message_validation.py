@@ -29,6 +29,7 @@ def test_websocket_invalid_json(
 def test_websocket_blank_content(
     testClient: TestClient,
     authenticatedUsers: dict[str, AuthenticatedTestUser],
+    conversationId: str,
 ) -> None:
     """测试空白消息内容"""
     user = authenticatedUsers["user-a"]
@@ -39,7 +40,7 @@ def test_websocket_blank_content(
         websocket.send_json(
             {
                 "type": "send_message",
-                "recipient_id": "user-b",
+                "conversation_id": conversationId,
                 "content": "    ",
                 "client_message_id": "5cbe59a7-1c45-4dd9-9302-d9eb2586bb6b",
             }
@@ -53,6 +54,7 @@ def test_websocket_blank_content(
 def test_websocket_unknown_message_type(
     testClient: TestClient,
     authenticatedUsers: dict[str, AuthenticatedTestUser],
+    conversationId: str,
 ) -> None:
     """测试未知消息类型"""
     user = authenticatedUsers["user-a"]
@@ -63,7 +65,7 @@ def test_websocket_unknown_message_type(
         websocket.send_json(
             {
                 "type": "unknown",
-                "recipient_id": "user-b",
+                "conversation_id": conversationId,
                 "content": "    ",
                 "client_message_id": "5cbe59a7-1c45-4dd9-9302-d9eb2586bb6b",
             }
@@ -77,6 +79,7 @@ def test_websocket_unknown_message_type(
 def test_websocket_rejects_forged_sender_id(
     testClient: TestClient,
     authenticatedUsers: dict[str, AuthenticatedTestUser],
+    conversationId: str,
 ) -> None:
     """测试客户端不能通过载荷伪造发送者 ID"""
     user = authenticatedUsers["user-a"]
@@ -88,7 +91,7 @@ def test_websocket_rejects_forged_sender_id(
             {
                 "type": "send_message",
                 "sender_id": "user-c",
-                "recipient_id": authenticatedUsers["user-b"].userId,
+                "conversation_id": conversationId,
                 "content": "伪造发送者",
                 "client_message_id": "ff3596a2-cf49-45b5-9502-f68b11a0f04b",
             }
