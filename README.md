@@ -39,6 +39,7 @@ npm run dev
 - SQLAlchemy 数据持久化。
 - 历史消息游标分页、离线主动拉取和发送幂等。
 - 用户认证、消息可靠性和自动化测试。
+- 一对一会话聚合、成员授权和并发唯一性。
 
 ## 第一版目标
 
@@ -54,7 +55,7 @@ npm run dev
 
 ```text
 src/
-├── domain/         消息领域对象、不变量和领域异常
+├── domain/         用户、会话、消息领域对象及不变量
 ├── application/    发送消息用例、命令、结果和端口
 ├── adapters/       内存、WebSocket 和异步数据库适配器
 └── entrypoints/    FastAPI 路由、Pydantic 协议模型和错误映射
@@ -96,7 +97,7 @@ main → bootstrap → entrypoints / adapters → application → domain
 ## 当前限制
 
 - 只支持单进程在线连接和单文件 SQLite 消息存储。
-- 已支持短期 Bearer JWT 身份认证，但尚未实现会话成员授权。
+- 已支持短期 Bearer JWT 身份认证和一对一会话成员授权。
 - 进程退出后在线状态会丢失，消息会保存在 `data/chat.sqlite3`。
 - 应用运行时使用 AsyncSession 和 aiosqlite；Alembic 运维命令仍使用同步连接。
 - 应用不会自动迁移数据库，部署或拉取新版本后需要执行 `alembic upgrade head`。
