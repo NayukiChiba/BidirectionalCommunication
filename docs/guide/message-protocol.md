@@ -18,7 +18,7 @@ ws://127.0.0.1:8000/ws
 ```json
 {
   "type": "send_message",
-  "recipient_id": "user-b",
+  "conversation_id": "31487468-dd7c-4de9-ac2b-fd5b979da2b8",
   "content": "Hello World",
   "client_message_id": "5cbe59a7-1c45-4dd9-9302-d9eb2586bb6b"
 }
@@ -29,12 +29,13 @@ ws://127.0.0.1:8000/ws
 | 字段 | 说明 |
 | --- | --- |
 | `type` | 固定为 `send_message` |
-| `recipient_id` | 接收方用户标识，最长 64 个字符 |
+| `conversation_id` | 已创建的一对一会话 UUID |
 | `content` | 非空文字消息，最长 2000 个字符 |
 | `client_message_id` | 客户端提供的 UUID，同时作为发送重试的幂等键 |
 
 发送者身份由当前 WebSocket 连接的已验证令牌决定。客户端不能在消息载荷中传入
 `sender_id`。
+服务端加载会话并检查发送者是成员，接收者由会话中的另一名成员确定。
 
 ## 接收消息事件
 
@@ -45,6 +46,7 @@ ws://127.0.0.1:8000/ws
   "type": "message",
   "server_message_id": "e6935df2-343f-4915-bcb7-fbd45891fd60",
   "client_message_id": "5cbe59a7-1c45-4dd9-9302-d9eb2586bb6b",
+  "conversation_id": "31487468-dd7c-4de9-ac2b-fd5b979da2b8",
   "sender_id": "user-a",
   "recipient_id": "user-b",
   "content": "Hello World",
@@ -95,11 +97,9 @@ ws://127.0.0.1:8000/ws
 | `recipient_offline` | 目标用户当前没有可用连接 |
 | `delivery_failed` | 目标连接存在，但实时推送过程失败 |
 | `message_storage_failed` | 消息保存失败，因此没有执行实时推送 |
+| `conversation_unavailable` | 会话不存在或当前用户不是成员 |
 
-## 自发消息
-
-允许发送方将 `recipient_id` 设置为自己的用户标识。当前连接会依次收到 `message`
-事件和 `ack`。
+一对一会话固定包含两名不同用户，因此不支持自发消息。
 
 ## 重复登录
 

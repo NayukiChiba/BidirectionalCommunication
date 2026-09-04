@@ -9,13 +9,14 @@ Application 只依赖自有端口，不知道 SQLite、Session 或 ORM 类型。
 messages
 ├── message_id         VARCHAR(36)  PRIMARY KEY
 ├── client_message_id  VARCHAR(36)  NOT NULL
+├── conversation_id    VARCHAR(36)  FOREIGN KEY NOT NULL
 ├── sender_id          TEXT         NOT NULL
 ├── recipient_id       TEXT         NOT NULL
 ├── content            TEXT         NOT NULL
 └── created_at         DATETIME     NOT NULL
 
 UNIQUE (sender_id, client_message_id)
-INDEX  (sender_id, recipient_id, created_at, message_id)
+INDEX  (conversation_id, created_at, message_id)
 ```
 
 ### 约束用途
@@ -27,25 +28,22 @@ INDEX  (sender_id, recipient_id, created_at, message_id)
 - 发送者和接收者不能是空白字符串。
 - 消息正文去除首尾空白后长度必须处于 1 到 2000 之间，与领域规则一致。
 
-目前没有为 `sender_id` 和 `recipient_id` 声明外键。外键必须引用真实存在且生命周期
-明确的父表，而项目尚未建立用户持久化模型。为了展示语法而创建空壳用户表会产生错误
-的领域承诺；用户表进入项目后，再让这两个字段引用用户主键。
+`conversation_id` 引用稳定会话身份。发送者和接收者用于幂等与实时投递；其成员合法性
+由应用服务加载 `Conversation` 聚合检查，成员表则通过外键引用真实用户。
 
 ### 索引用途
 
-`(sender_id, recipient_id, created_at, message_id)` 服务于双向单聊查询：
+`(conversation_id, created_at, message_id)` 服务于稳定会话历史查询：
 
 ```sql
 SELECT *
 FROM messages
-WHERE (sender_id = ? AND recipient_id = ?)
-   OR (sender_id = ? AND recipient_id = ?)
+WHERE conversation_id = ?
 ORDER BY created_at, message_id;
 ```
 
-两个方向都对 `sender_id` 和 `recipient_id` 使用等值条件，可以复用同一个索引；
-`created_at` 用于时间排序，`message_id` 在创建时间相同时提供稳定次序。主键和唯一
-约束已经有对应索引，因此不创建重复索引。
+`conversation_id` 缩小查询范围，`created_at` 用于时间排序，`message_id` 在创建时间
+相同时提供稳定次序。主键和唯一约束已经有对应索引，因此不创建重复索引。
 
 索引会占用磁盘空间，并增加插入、更新和删除的维护成本。因此当前不提前为尚不存在的
 查询添加发送者索引或正文索引。
@@ -53,14 +51,15 @@ ORDER BY created_at, message_id;
 ## 用户表
 
 认证用户使用独立 `users` 表保存稳定 UUID、规范化唯一用户名、Argon2id 密码哈希和
-UTC 创建时间。数据库没有明文密码字段；用户表暂不与消息表建立外键，避免在加入会话
-成员模型前改变已有消息数据语义。
+UTC 创建时间。数据库没有明文密码字段；`conversation_members.user_id` 通过外键引用
+该表。
 
 ## 代码位置
 
 - `src/config.py`：统一生成项目根目录、数据目录和 SQLite 文件路径。
 - `src/adapters/database/connection.py`：创建 AsyncEngine 和 AsyncSession 工厂。
-- `src/adapters/database/models.py`：声明 `MessageRecord` ORM 持久化模型。
+- `src/adapters/database/models.py`：声明消息、会话、成员和用户 ORM 持久化模型。
+- `src/adapters/database/conversationMapper.py`：转换 Conversation 聚合与 ORM 记录。
 - `src/adapters/database/userMapper.py`：转换用户领域实体与用户 ORM 记录。
 - `src/adapters/database/messageMapper.py`：在领域模型与 ORM 模型之间显式转换。
 - `src/adapters/database/asyncSqlAlchemyMessageRepository.py`：执行异步消息持久化查询。

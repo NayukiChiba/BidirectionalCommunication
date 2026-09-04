@@ -2,8 +2,9 @@
 
 ## 当前范围
 
-当前领域层只负责表达一条聊天消息及其必须始终成立的规则。它不负责 WebSocket
-连接、协议解析、消息投递、数据持久化或会话管理。
+当前领域层表达用户标识、`Conversation` 聚合和聊天消息。它不负责 WebSocket 连接、
+协议解析、消息投递或数据持久化；会话聚合详见
+[一对一会话聚合与成员权限](/guide/conversations)。
 
 领域代码位于 `src/domain/`，只依赖 Python 标准库。
 
@@ -14,6 +15,7 @@
 | `UserId` | 值对象 | 发送者或接收者的用户标识 |
 | `MessageId` | 值对象 | 服务端生成的消息唯一标识 |
 | `ClientMessageId` | 值对象 | 客户端生成的消息关联标识 |
+| `ConversationId` | 值对象 | 消息所属会话的稳定标识 |
 | `MessageContent` | 值对象 | 经过规范化的文字消息内容 |
 | `ChatMessage` | 实体 | 由 `MessageId` 标识的一条聊天消息 |
 
@@ -51,13 +53,13 @@
 - 必须由上述领域值对象组合，不能直接使用原始字符串或 UUID 代替。
 - 以 `MessageId` 判断两条消息是否为同一实体。
 - `created_at` 必须包含时区，并统一转换为 UTC。
-- 允许发送者和接收者是同一用户。
+- 必须包含 `ConversationId`；发送服务从已验证会话中取得另一名成员作为接收者。
 - 创建后不可修改。
 
 ## 创建入口
 
-`create_chat_message` 是当前消息实体的创建函数。调用方提供客户端消息标识、发送者、
-接收者和消息内容；函数补充服务端 `MessageId` 与 UTC 创建时间。
+`create_chat_message` 是当前消息实体的创建函数。调用方提供会话、客户端消息标识、
+发送者、接收者和消息内容；函数补充服务端 `MessageId` 与 UTC 创建时间。
 
 这个创建过程目前没有额外状态或独立生命周期，因此使用函数比增加工厂类更清晰。
 
@@ -84,7 +86,7 @@
 | 方向 | 负责位置 | 说明 |
 | --- | --- | --- |
 | `SendMessagePayload` → `SendMessageCommand` | WebSocket 路由 | 解析协议字段，并补充来自当前连接的可信发送者身份 |
-| `SendMessageCommand` → `ChatMessage` | `SendMessageService` | 创建领域值对象，并通过 `create_chat_message` 创建新消息 |
+| `SendMessageCommand` → `ChatMessage` | `SendMessageService` | 加载会话、验证成员，再通过 `create_chat_message` 创建消息 |
 | `ChatMessage` → WebSocket 消息事件 | `WebSocketMessageNotifier` | 将领域字段转换成客户端协议字段并尝试实时投递 |
 
 Pydantic 负责检查外部数据结构，领域对象继续保护业务不变量。因此，即使传输模型已经

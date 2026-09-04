@@ -4,7 +4,7 @@
 
 | 模块 | 职责 |
 | --- | --- |
-| `domain` | 表达消息领域概念、不变量和领域异常 |
+| `domain` | 表达用户、会话聚合、消息及其不变量和领域异常 |
 | `application` | 表达认证、发送、历史查询、命令、结果及所需端口 |
 | `adapters` | 使用内存、异步 SQLAlchemy 和 WebSocket 实现应用端口及连接管理 |
 | `entrypoints` | 处理 FastAPI 路由、Pydantic 协议模型和错误映射 |
@@ -54,10 +54,12 @@ app = create_app()
 ConnectionManager
 SQLite AsyncEngine / AsyncSession Factory
 AsyncSqlAlchemyMessageUnitOfWorkFactory
+AsyncSqlAlchemyConversationUnitOfWorkFactory
 AsyncSqlAlchemyUserUnitOfWorkFactory
 PwdlibPasswordHasher / JwtAccessTokenProvider
 WebSocketMessageNotifier
 AuthenticationService
+CreateConversationService
 SendMessageService
 GetMessageHistoryService
 FastAPI

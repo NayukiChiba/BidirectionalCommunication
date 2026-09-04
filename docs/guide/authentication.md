@@ -141,11 +141,11 @@ Authorization: Bearer <JWT>
 历史接口不再接受 `user_id`：
 
 ```http
-GET /messages/history?peer_id=<对方用户ID>&limit=50
+GET /conversations/<会话ID>/messages?limit=50
 Authorization: Bearer <JWT>
 ```
 
-当前用户始终从 Bearer 令牌取得，查询参数只能指定对方用户。
+当前用户始终从 Bearer 令牌取得，并且必须是路径指定会话的成员。
 
 ## WebSocket 握手
 
@@ -184,5 +184,5 @@ HttpOnly Cookie 或受约束子协议方案，不能退回 URL Token。
 - 认证回答：当前请求是谁？
 - 授权回答：这个用户是否有权访问目标资源？
 
-本 Issue 只建立可信身份。用户登录成功不代表可以读取或向任意会话发送消息；会话成员
-关系和权限检查属于 Issue 18。
+用户登录成功不代表可以读取或向任意会话发送消息。`Conversation` 聚合的成员关系会在
+消息发送和历史读取前进行授权检查。

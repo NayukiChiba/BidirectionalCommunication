@@ -6,7 +6,7 @@
 ## 历史消息接口
 
 ```http
-GET /messages/history?peer_id=<对方用户ID>&limit=50
+GET /conversations/<会话ID>/messages?limit=50
 Authorization: Bearer <JWT>
 ```
 
@@ -18,6 +18,7 @@ Authorization: Bearer <JWT>
     {
       "server_message_id": "e6935df2-343f-4915-bcb7-fbd45891fd60",
       "client_message_id": "5cbe59a7-1c45-4dd9-9302-d9eb2586bb6b",
+      "conversation_id": "31487468-dd7c-4de9-ac2b-fd5b979da2b8",
       "sender_id": "user-a",
       "recipient_id": "user-b",
       "content": "Hello World",
@@ -37,7 +38,7 @@ Authorization: Bearer <JWT>
 继续查询：
 
 ```http
-GET /messages/history?peer_id=<对方用户ID>&limit=50&cursor=<next_cursor>
+GET /conversations/<会话ID>/messages?limit=50&cursor=<next_cursor>
 Authorization: Bearer <JWT>
 ```
 
@@ -62,23 +63,20 @@ LIMIT 50 OFFSET 10000
 
 ## 查询索引
 
-第二个 Alembic revision 将旧索引替换为：
+Issue 18 的迁移将旧双用户索引替换为：
 
 ```text
-(sender_id, recipient_id, created_at, message_id)
+(conversation_id, created_at, message_id)
 ```
 
-单聊查询包含两个方向：
+单聊查询直接使用稳定会话身份：
 
 ```sql
-(sender_id = :user AND recipient_id = :peer)
-OR
-(sender_id = :peer AND recipient_id = :user)
+conversation_id = :conversation_id
 ```
 
-两个分支都对 `sender_id` 和 `recipient_id` 使用等值条件，因此 SQLite 可以为两个
-分支复用同一个复合索引。集成测试通过 `EXPLAIN QUERY PLAN` 验证使用该索引，而不是
-维护一个没有收益的反向重复索引。
+索引的第一列匹配会话等值条件，后两列匹配游标过滤和排序。集成测试通过
+`EXPLAIN QUERY PLAN` 验证查询使用该索引。
 
 ## 离线消息恢复
 
@@ -123,5 +121,5 @@ ACK 中的 `server_message_id` 也保持相同。
 
 ## 当前权限边界
 
-当前用户来自已验证 Bearer 令牌，不再信任 `user_id` 查询参数。但身份认证不等于会话
-授权；Issue 18 将限制只有会话成员才能读取历史和发送消息。
+当前用户来自已验证 Bearer 令牌，历史接口还会验证该用户属于路径指定的会话。会话
+不存在和非成员访问使用同一种外部错误，避免泄露会话存在性。

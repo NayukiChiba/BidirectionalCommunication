@@ -11,11 +11,13 @@ Application 和 Domain 不依赖 SQLAlchemy。
 class MessageRepository(Protocol):
     def add(self, message: ChatMessage) -> None: ...
     def getByClientMessageId(...) -> ChatMessage | None: ...
-    def listConversation(...) -> tuple[ChatMessage, ...]: ...
+    def listByConversation(...) -> tuple[ChatMessage, ...]: ...
 ```
 
 它没有 `save(entity)`、`delete(entity)`、`findAll()` 等通用 CRUD。Repository 的接口
-跟随真实用例增长；当前查询只表达幂等键查找和双人单聊历史，不暴露通用 ORM 查询。
+跟随真实用例增长；当前查询只表达幂等键查找和按会话身份查询历史，不暴露通用 ORM
+查询。`ConversationRepository` 则以聚合身份和成员组合提供 `getById()`、
+`getByMembers()` 和 `add()`。
 
 `MessageUnitOfWork` 表达一次应用操作的原子事务边界：
 

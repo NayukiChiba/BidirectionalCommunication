@@ -32,6 +32,7 @@ Unit of Work 使用异步 SQLAlchemy，
 由 Alembic 管理数据库结构，并提供稳定游标历史查询、离线主动恢复和消息幂等。
 每个并发 Task 使用独立 AsyncSession，数据库等待不会阻塞其他连接的事件循环调度。
 HTTP 与 WebSocket 已使用同一短期 Bearer JWT 建立可信用户身份。
+一对一会话现在具有稳定身份和数据库成员约束，只有会话成员可以发送或读取消息。
 
 ## 文档导航
 
@@ -42,6 +43,7 @@ HTTP 与 WebSocket 已使用同一短期 Bearer JWT 建立可信用户身份。
 - [关系建模与 SQLAlchemy](/guide/database-foundations)：消息表、索引、ORM 映射和事务基础。
 - [异步 SQLAlchemy](/guide/async-sqlalchemy)：AsyncEngine、Task 级 Session 和显式 I/O。
 - [用户认证与 WebSocket 鉴权](/guide/authentication)：Argon2id、JWT、Bearer 和环境密钥。
+- [一对一会话聚合与成员权限](/guide/conversations)：会话身份、成员约束和授权边界。
 - [Alembic 数据库迁移](/guide/database-migrations)：版本历史、升级降级和开发部署流程。
 - [Repository 与 Unit of Work](/guide/repository-unit-of-work)：持久化端口、事务边界和失败恢复。
 - [消息领域模型](/domain/message-model)：领域概念、不变量和传输转换边界。

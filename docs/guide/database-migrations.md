@@ -15,7 +15,8 @@ migrations/
 └── versions/
     ├── e5f06ff274b9_create_messages_table.py
     ├── b5db92390df6_add_conversation_history_indexes.py
-    └── f53ad4a832a9_create_users_table.py
+    ├── f53ad4a832a9_create_users_table.py
+    └── c18a4f7d2e91_create_direct_conversations.py
 ```
 
 - `pyproject.toml` 保存迁移目录和项目导入路径。
@@ -43,6 +44,11 @@ revision `b5db92390df6` 将旧收件人索引替换为与双向单聊游标查�
 `(sender_id, recipient_id, created_at, message_id)` 复合索引。
 
 revision `f53ad4a832a9` 创建认证用户表，只保存规范化用户名和 Argon2id 密码哈希。
+
+revision `c18a4f7d2e91` 创建会话和成员表，为消息增加不可空 `conversation_id` 外键，
+回填已有双向消息的会话身份，并把历史索引替换为
+`(conversation_id, created_at, message_id)`。若旧消息包含自发消息或未注册用户，迁移会
+明确停止，避免静默制造不满足新领域规则的数据。
 
 该文件最初由 `--autogenerate` 生成，随后进行了人工审查：保留与 ORM 元数据一致的
 字段类型和约束，确认索引用途，移除生成器提示，并把初始建表整理为直接、可读的
