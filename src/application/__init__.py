@@ -16,9 +16,23 @@ from src.application.authPorts import (
     UserUnitOfWork,
     UserUnitOfWorkFactory,
 )
+from src.application.conversationModels import (
+    CreateConversationCommand,
+    CreateConversationResult,
+)
+from src.application.conversationPorts import (
+    ConversationRepository,
+    ConversationUnitOfWork,
+    ConversationUnitOfWorkFactory,
+)
+from src.application.createConversation import CreateConversationService
 from src.application.exceptions import (
     AuthenticationError,
+    ConversationStorageConflictError,
+    ConversationStorageError,
+    ConversationUnavailable,
     InvalidAccessToken,
+    InvalidConversationRequest,
     InvalidCredentials,
     InvalidMessageHistoryQuery,
     InvalidRegistration,
@@ -52,10 +66,20 @@ __all__ = [
     "AccessTokenProvider",
     "AuthenticationError",
     "AuthenticationService",
+    "ConversationRepository",
+    "ConversationStorageConflictError",
+    "ConversationStorageError",
+    "ConversationUnavailable",
+    "ConversationUnitOfWork",
+    "ConversationUnitOfWorkFactory",
+    "CreateConversationCommand",
+    "CreateConversationResult",
+    "CreateConversationService",
     "DEFAULT_HISTORY_PAGE_SIZE",
     "DeliveryOutcome",
     "GetMessageHistoryService",
     "InvalidAccessToken",
+    "InvalidConversationRequest",
     "InvalidCredentials",
     "InvalidMessageHistoryQuery",
     "InvalidRegistration",

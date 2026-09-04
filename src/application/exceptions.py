@@ -35,3 +35,19 @@ class InvalidAccessToken(InvalidCredentials):
 
 class UserStorageError(RuntimeError):
     """用户无法通过持久化端口读取或保存。"""
+
+
+class InvalidConversationRequest(ValueError):
+    """创建会话的输入不满足业务规则。"""
+
+
+class ConversationUnavailable(LookupError):
+    """会话不存在或当前用户不是成员。"""
+
+
+class ConversationStorageError(RuntimeError):
+    """会话无法通过持久化端口读取或保存。"""
+
+
+class ConversationStorageConflictError(ConversationStorageError):
+    """会话成员组合与数据库唯一约束冲突。"""
