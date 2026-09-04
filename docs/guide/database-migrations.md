@@ -14,7 +14,8 @@ migrations/
 ├── script.py.mako
 └── versions/
     ├── e5f06ff274b9_create_messages_table.py
-    └── b5db92390df6_add_conversation_history_indexes.py
+    ├── b5db92390df6_add_conversation_history_indexes.py
+    └── f53ad4a832a9_create_users_table.py
 ```
 
 - `pyproject.toml` 保存迁移目录和项目导入路径。
@@ -40,6 +41,8 @@ revision `e5f06ff274b9` 创建：
 
 revision `b5db92390df6` 将旧收件人索引替换为与双向单聊游标查询匹配的
 `(sender_id, recipient_id, created_at, message_id)` 复合索引。
+
+revision `f53ad4a832a9` 创建认证用户表，只保存规范化用户名和 Argon2id 密码哈希。
 
 该文件最初由 `--autogenerate` 生成，随后进行了人工审查：保留与 ORM 元数据一致的
 字段类型和约束，确认索引用途，移除生成器提示，并把初始建表整理为直接、可读的

@@ -6,7 +6,8 @@
 ## 历史消息接口
 
 ```http
-GET /messages/history?user_id=user-a&peer_id=user-b&limit=50
+GET /messages/history?peer_id=<对方用户ID>&limit=50
+Authorization: Bearer <JWT>
 ```
 
 响应按 `(created_at, server_message_id)` 从旧到新排列：
@@ -36,7 +37,8 @@ GET /messages/history?user_id=user-a&peer_id=user-b&limit=50
 继续查询：
 
 ```http
-GET /messages/history?user_id=user-a&peer_id=user-b&limit=50&cursor=<next_cursor>
+GET /messages/history?peer_id=<对方用户ID>&limit=50&cursor=<next_cursor>
+Authorization: Bearer <JWT>
 ```
 
 游标是排他的，因此返回结果不包含游标所指消息。
@@ -119,7 +121,7 @@ ACK 中的 `server_message_id` 也保持相同。
 同一个发送者不能把一个 `client_message_id` 用于两条不同业务消息；重复使用时，原消息
 始终胜出。
 
-## 当前身份边界
+## 当前权限边界
 
-项目尚未实现认证，因此 HTTP 接口中的 `user_id` 仍由调用者提供，只适合当前学习阶段。
-Issue 17 接入可信身份后，查询用户应来自访问令牌，不能继续信任任意查询参数。
+当前用户来自已验证 Bearer 令牌，不再信任 `user_id` 查询参数。但身份认证不等于会话
+授权；Issue 18 将限制只有会话成员才能读取历史和发送消息。

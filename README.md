@@ -6,6 +6,8 @@
 
 ```bash
 uv sync --dev
+Copy-Item .env.example .env
+# 编辑 .env，设置随机 AUTH_SECRET_KEY
 uv run alembic upgrade head
 uv run uvicorn main:app --reload
 ```
@@ -94,7 +96,7 @@ main → bootstrap → entrypoints / adapters → application → domain
 ## 当前限制
 
 - 只支持单进程在线连接和单文件 SQLite 消息存储。
-- 没有身份认证，客户端可以自行指定 `user_id`。
+- 已支持短期 Bearer JWT 身份认证，但尚未实现会话成员授权。
 - 进程退出后在线状态会丢失，消息会保存在 `data/chat.sqlite3`。
 - 应用运行时使用 AsyncSession 和 aiosqlite；Alembic 运维命令仍使用同步连接。
 - 应用不会自动迁移数据库，部署或拉取新版本后需要执行 `alembic upgrade head`。

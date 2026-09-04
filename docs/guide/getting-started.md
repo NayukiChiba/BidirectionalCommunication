@@ -11,7 +11,15 @@
 在项目根目录执行：
 
 ```bash
-uv sync
+uv sync --dev
+Copy-Item .env.example .env
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+将生成的随机值写入 `.env` 的 `AUTH_SECRET_KEY`，然后升级数据库：
+
+```bash
+uv run alembic upgrade head
 ```
 
 ## 启动服务
@@ -24,7 +32,7 @@ uv run uvicorn main:app --reload
 
 - HTTP：`http://127.0.0.1:8000`
 - 健康检查：`http://127.0.0.1:8000/health`
-- WebSocket：`ws://127.0.0.1:8000/ws?user_id=user-a`
+- WebSocket：`ws://127.0.0.1:8000/ws`（握手需要 Bearer 令牌）
 
 访问健康检查接口，预期响应为：
 
@@ -72,5 +80,5 @@ npm run preview
 
 ## 下一步
 
-阅读 [WebSocket 消息协议](./message-protocol)，了解客户端连接、发送消息和处理响应的
-方式。
+先阅读[用户认证与 WebSocket 鉴权](./authentication)，再阅读
+[WebSocket 消息协议](./message-protocol)，了解登录、连接、发送和响应流程。

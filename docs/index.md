@@ -27,9 +27,11 @@ features:
 ## 当前阶段
 
 项目已经完成单进程 WebSocket 私聊 v0.1、`M3 分层内核 v0.2` 和
-`M4 持久化聊天 v0.3`。当前通过 Repository 与 Unit of Work 使用异步 SQLAlchemy，
+`M4 持久化聊天 v0.3`，正在进入 `M5 可信私聊 v0.9`。当前通过 Repository 与
+Unit of Work 使用异步 SQLAlchemy，
 由 Alembic 管理数据库结构，并提供稳定游标历史查询、离线主动恢复和消息幂等。
 每个并发 Task 使用独立 AsyncSession，数据库等待不会阻塞其他连接的事件循环调度。
+HTTP 与 WebSocket 已使用同一短期 Bearer JWT 建立可信用户身份。
 
 ## 文档导航
 
@@ -39,6 +41,7 @@ features:
 - [架构与组合根](/guide/architecture)：各层职责、依赖方向和应用组装。
 - [关系建模与 SQLAlchemy](/guide/database-foundations)：消息表、索引、ORM 映射和事务基础。
 - [异步 SQLAlchemy](/guide/async-sqlalchemy)：AsyncEngine、Task 级 Session 和显式 I/O。
+- [用户认证与 WebSocket 鉴权](/guide/authentication)：Argon2id、JWT、Bearer 和环境密钥。
 - [Alembic 数据库迁移](/guide/database-migrations)：版本历史、升级降级和开发部署流程。
 - [Repository 与 Unit of Work](/guide/repository-unit-of-work)：持久化端口、事务边界和失败恢复。
 - [消息领域模型](/domain/message-model)：领域概念、不变量和传输转换边界。

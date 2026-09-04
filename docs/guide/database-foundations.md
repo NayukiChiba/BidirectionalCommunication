@@ -50,11 +50,18 @@ ORDER BY created_at, message_id;
 索引会占用磁盘空间，并增加插入、更新和删除的维护成本。因此当前不提前为尚不存在的
 查询添加发送者索引或正文索引。
 
+## 用户表
+
+认证用户使用独立 `users` 表保存稳定 UUID、规范化唯一用户名、Argon2id 密码哈希和
+UTC 创建时间。数据库没有明文密码字段；用户表暂不与消息表建立外键，避免在加入会话
+成员模型前改变已有消息数据语义。
+
 ## 代码位置
 
 - `src/config.py`：统一生成项目根目录、数据目录和 SQLite 文件路径。
 - `src/adapters/database/connection.py`：创建 AsyncEngine 和 AsyncSession 工厂。
 - `src/adapters/database/models.py`：声明 `MessageRecord` ORM 持久化模型。
+- `src/adapters/database/userMapper.py`：转换用户领域实体与用户 ORM 记录。
 - `src/adapters/database/messageMapper.py`：在领域模型与 ORM 模型之间显式转换。
 - `src/adapters/database/asyncSqlAlchemyMessageRepository.py`：执行异步消息持久化查询。
 - `src/adapters/database/asyncSqlAlchemyMessageUnitOfWork.py`：管理异步事务和 Session。
