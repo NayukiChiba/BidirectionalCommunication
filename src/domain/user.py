@@ -10,7 +10,7 @@ from src.domain.exceptions import (
     InvalidUser,
     InvalidUsername,
 )
-from src.domain.message import UserId
+from src.domain.identifiers import UserId
 
 MIN_USERNAME_LENGTH = 3
 MAX_USERNAME_LENGTH = 32

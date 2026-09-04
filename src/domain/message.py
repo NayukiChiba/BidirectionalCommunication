@@ -4,38 +4,17 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
+from src.domain.conversation import ConversationId
 from src.domain.exceptions import (
     InvalidChatMessage,
     InvalidClientMessageId,
     InvalidMessageContent,
     InvalidMessageCreatedAt,
     InvalidMessageId,
-    InvalidUserId,
 )
+from src.domain.identifiers import UserId
 
 MAX_MESSAGE_CONTENT_LENGTH = 2000
-
-
-@dataclass(frozen=True, slots=True)
-class UserId:
-    """经过规范化的用户标识值对象。"""
-
-    value: str
-
-    def __post_init__(self) -> None:
-        """验证并规范化用户标识。"""
-        if not isinstance(self.value, str):
-            raise InvalidUserId("用户标识必须是字符串")
-
-        normalized_value = self.value.strip()
-        if not normalized_value:
-            raise InvalidUserId("用户标识不能为空")
-
-        object.__setattr__(self, "value", normalized_value)
-
-    def __str__(self) -> str:
-        """返回可用于外层转换的文本值。"""
-        return self.value
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +86,7 @@ class ChatMessage:
 
     message_id: MessageId
     client_message_id: ClientMessageId
+    conversation_id: ConversationId
     sender_id: UserId
     recipient_id: UserId
     content: MessageContent
@@ -121,6 +101,11 @@ class ChatMessage:
             "recipient_id": (self.recipient_id, UserId),
             "content": (self.content, MessageContent),
         }
+
+        expected_types["conversation_id"] = (
+            self.conversation_id,
+            ConversationId,
+        )
         for field_name, (field_value, expected_type) in expected_types.items():
             if not isinstance(field_value, expected_type):
                 raise InvalidChatMessage(
@@ -152,6 +137,7 @@ class ChatMessage:
 def create_chat_message(
     *,
     client_message_id: ClientMessageId,
+    conversation_id: ConversationId,
     sender_id: UserId,
     recipient_id: UserId,
     content: MessageContent,
@@ -160,6 +146,7 @@ def create_chat_message(
     return ChatMessage(
         message_id=MessageId.generate(),
         client_message_id=client_message_id,
+        conversation_id=conversation_id,
         sender_id=sender_id,
         recipient_id=recipient_id,
         content=content,

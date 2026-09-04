@@ -1,4 +1,4 @@
-"""消息领域异常。"""
+"""用户、会话与消息领域异常。"""
 
 
 class DomainError(ValueError):
@@ -39,3 +39,15 @@ class InvalidMessageCreatedAt(DomainError):
 
 class InvalidChatMessage(DomainError):
     """聊天消息没有由合法领域概念组成。"""
+
+
+class InvalidConversationId(DomainError):
+    """会话标识不合法。"""
+
+
+class InvalidConversation(DomainError):
+    """一对一会话没有满足成员不变量。"""
+
+
+class ConversationMemberRequired(DomainError):
+    """用户不是当前会话成员。"""
