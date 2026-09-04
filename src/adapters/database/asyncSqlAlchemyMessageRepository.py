@@ -8,7 +8,7 @@ from src.adapters.database.messageMapper import toDomainMessage, toMessageRecord
 from src.adapters.database.models import MessageRecord
 from src.application.exceptions import MessageStorageError
 from src.application.models import MessageCursor
-from src.domain import ChatMessage, ClientMessageId, UserId
+from src.domain import ChatMessage, ClientMessageId, ConversationId, UserId
 
 
 class AsyncSqlAlchemyMessageRepository:
@@ -42,28 +42,16 @@ class AsyncSqlAlchemyMessageRepository:
             raise MessageStorageError("查询幂等消息失败") from error
         return toDomainMessage(record) if record is not None else None
 
-    async def listConversation(
+    async def listByConversation(
         self,
-        userId: UserId,
-        peerId: UserId,
+        conversationId: ConversationId,
         *,
         cursor: MessageCursor | None,
         limit: int,
     ) -> tuple[ChatMessage, ...]:
-        """使用稳定排他游标查询两个用户之间的消息。"""
-        userValue = str(userId)
-        peerValue = str(peerId)
+        """使用稳定排他游标查询一个会话中的消息。"""
         statement = select(MessageRecord).where(
-            or_(
-                and_(
-                    MessageRecord.senderId == userValue,
-                    MessageRecord.recipientId == peerValue,
-                ),
-                and_(
-                    MessageRecord.senderId == peerValue,
-                    MessageRecord.recipientId == userValue,
-                ),
-            )
+            MessageRecord.conversationId == str(conversationId)
         )
         if cursor is not None:
             statement = statement.where(
