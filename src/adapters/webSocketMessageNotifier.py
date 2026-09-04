@@ -32,6 +32,7 @@ class WebSocketMessageNotifier:
             "type": "message",
             "server_message_id": str(message.message_id),
             "client_message_id": str(message.client_message_id),
+            "conversation_id": str(message.conversation_id),
             "sender_id": str(message.sender_id),
             "recipient_id": str(message.recipient_id),
             "content": str(message.content),

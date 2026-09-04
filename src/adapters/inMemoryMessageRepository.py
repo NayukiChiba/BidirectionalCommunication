@@ -1,7 +1,13 @@
 """消息存储端口的内存适配器。"""
 
 from src.application.models import MessageCursor
-from src.domain import ChatMessage, ClientMessageId, MessageId, UserId
+from src.domain import (
+    ChatMessage,
+    ClientMessageId,
+    ConversationId,
+    MessageId,
+    UserId,
+)
 
 
 class InMemoryMessageRepository:
@@ -34,20 +40,18 @@ class InMemoryMessageRepository:
             None,
         )
 
-    async def listConversation(
+    async def listByConversation(
         self,
-        userId: UserId,
-        peerId: UserId,
+        conversationId: ConversationId,
         *,
         cursor: MessageCursor | None,
         limit: int,
     ) -> tuple[ChatMessage, ...]:
-        """按创建时间和消息 ID 正向查询两个用户之间的消息。"""
+        """按创建时间和消息 ID 正向查询一个会话中的消息。"""
         messages = [
             message
             for message in self._messages.values()
-            if (message.sender_id == userId and message.recipient_id == peerId)
-            or (message.sender_id == peerId and message.recipient_id == userId)
+            if message.conversation_id == conversationId
         ]
         messages.sort(key=lambda message: (message.created_at, str(message.message_id)))
         if cursor is not None:
