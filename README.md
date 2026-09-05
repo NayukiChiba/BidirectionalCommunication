@@ -40,6 +40,7 @@ npm run dev
 - 历史消息游标分页、离线主动拉取和发送幂等。
 - 用户认证、消息可靠性和自动化测试。
 - 一对一会话聚合、成员授权和并发唯一性。
+- 累计送达/已读位置与 WebSocket 重连补偿。
 
 ## 第一版目标
 
@@ -101,6 +102,7 @@ main → bootstrap → entrypoints / adapters → application → domain
 - 进程退出后在线状态会丢失，消息会保存在 `data/chat.sqlite3`。
 - 应用运行时使用 AsyncSession 和 aiosqlite；Alembic 运维命令仍使用同步连接。
 - 应用不会自动迁移数据库，部署或拉取新版本后需要执行 `alembic upgrade head`。
-- 离线消息需要客户端主动拉取，尚未实现服务端自动补发。
-- 没有送达状态、已读回执或跨实例通信。
-- ACK 只表示服务端已向目标 WebSocket 执行发送，不表示用户已经阅读。
+- 离线消息由客户端在 WebSocket 重连后主动提交位置并分批同步。
+- 送达和已读位置按用户累计保存，尚不区分同一用户的多个设备。
+- `accepted` 只表示服务端已持久化，`pushed` 也不表示用户已经阅读。
+- 尚未实现跨实例通信。
