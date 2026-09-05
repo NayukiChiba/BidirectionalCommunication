@@ -43,7 +43,7 @@ class WebSocketMessageNotifier:
             data=event_data,
         )
         outcome_by_connection_result = {
-            ConnectionSendOutcome.DELIVERED: DeliveryOutcome.DELIVERED,
+            ConnectionSendOutcome.DELIVERED: DeliveryOutcome.PUSHED,
             ConnectionSendOutcome.RECIPIENT_OFFLINE: (
                 DeliveryOutcome.RECIPIENT_OFFLINE
             ),

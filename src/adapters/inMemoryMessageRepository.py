@@ -40,6 +40,10 @@ class InMemoryMessageRepository:
             None,
         )
 
+    async def getById(self, messageId: MessageId) -> ChatMessage | None:
+        """按服务端消息 ID 返回消息。"""
+        return self._messages.get(messageId)
+
     async def listByConversation(
         self,
         conversationId: ConversationId,
