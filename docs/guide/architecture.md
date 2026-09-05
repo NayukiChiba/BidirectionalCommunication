@@ -43,8 +43,9 @@ app = create_app()
 ```
 
 `src/entrypoints/` 表示外部请求进入应用核心的输入适配器，并不是另一个可执行程序入口。
-它负责将 WebSocket JSON 转换为 `SendMessageCommand`，将应用结果转换为 ACK 或
-错误事件，并把 HTTP 历史参数和不透明游标转换为应用查询。
+它负责将 WebSocket JSON 转换为发送、累计确认和同步命令，将应用结果转换为
+`accepted`、位置确认、同步结果或错误事件，并把 HTTP 历史参数和不透明游标转换为
+应用查询。
 
 ## 组合根
 
@@ -60,6 +61,7 @@ PwdlibPasswordHasher / JwtAccessTokenProvider
 WebSocketMessageNotifier
 AuthenticationService
 CreateConversationService
+AdvanceConversationPositionService / SyncMessagesService
 SendMessageService
 GetMessageHistoryService
 FastAPI
@@ -79,7 +81,7 @@ Entrypoint 处理输入和当前调用者响应：
 → SendMessagePayload
 → SendMessageCommand
 → SendMessageService
-→ ACK / ErrorEvent
+→ accepted / ErrorEvent
 ```
 
 Adapter 实现应用主动要求的接收者通知：

@@ -44,6 +44,7 @@ HTTP 与 WebSocket 已使用同一短期 Bearer JWT 建立可信用户身份。
 - [异步 SQLAlchemy](/guide/async-sqlalchemy)：AsyncEngine、Task 级 Session 和显式 I/O。
 - [用户认证与 WebSocket 鉴权](/guide/authentication)：Argon2id、JWT、Bearer 和环境密钥。
 - [一对一会话聚合与成员权限](/guide/conversations)：会话身份、成员约束和授权边界。
+- [送达、已读与重连补偿](/guide/delivery-read-reconnect)：累计位置、确认语义和客户端同步循环。
 - [Alembic 数据库迁移](/guide/database-migrations)：版本历史、升级降级和开发部署流程。
 - [Repository 与 Unit of Work](/guide/repository-unit-of-work)：持久化端口、事务边界和失败恢复。
 - [消息领域模型](/domain/message-model)：领域概念、不变量和传输转换边界。

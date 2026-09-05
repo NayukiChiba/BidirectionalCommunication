@@ -16,7 +16,8 @@ migrations/
     ├── e5f06ff274b9_create_messages_table.py
     ├── b5db92390df6_add_conversation_history_indexes.py
     ├── f53ad4a832a9_create_users_table.py
-    └── c18a4f7d2e91_create_direct_conversations.py
+    ├── c18a4f7d2e91_create_direct_conversations.py
+    └── d19b6c8e4f02_add_member_delivery_read_positions.py
 ```
 
 - `pyproject.toml` 保存迁移目录和项目导入路径。
@@ -49,6 +50,10 @@ revision `c18a4f7d2e91` 创建会话和成员表，为消息增加不可空 `con
 回填已有双向消息的会话身份，并把历史索引替换为
 `(conversation_id, created_at, message_id)`。若旧消息包含自发消息或未注册用户，迁移会
 明确停止，避免静默制造不满足新领域规则的数据。
+
+revision `d19b6c8e4f02` 为每个会话成员增加成对可空的送达和已读游标字段。消息 ID 外键
+防止位置引用不存在的消息，检查约束保证时间和消息 ID 同时为空或同时存在；位置所属
+会话及单调推进由应用校验和条件更新共同保护。
 
 该文件最初由 `--autogenerate` 生成，随后进行了人工审查：保留与 ORM 元数据一致的
 字段类型和约束，确认索引用途，移除生成器提示，并把初始建表整理为直接、可读的

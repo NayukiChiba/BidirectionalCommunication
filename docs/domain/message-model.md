@@ -38,7 +38,7 @@
 ### `ClientMessageId`
 
 - 必须包装 UUID。
-- 由客户端提供，用于关联消息和 ACK。
+- 由客户端提供，用于关联消息和 `accepted` 持久化确认。
 - 创建后不可修改。
 
 ### `MessageContent`

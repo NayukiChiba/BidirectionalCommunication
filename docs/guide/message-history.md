@@ -94,8 +94,9 @@ conversation_id = :conversation_id
               携带上次游标主动查询
 ```
 
-客户端应在本地保存最后同步成功的 `next_cursor`。重新连接后，用该游标调用历史接口，
-直到 `has_more` 为 `false`。当前没有已读和送达位置；这些属于 Issue 19。
+客户端可以继续保存 HTTP `next_cursor` 做普通历史分页。WebSocket 重连则提交本地最后
+连续保存的 `server_message_id`，由 `sync_messages` 补回其后的消息并累计推进送达位置。
+详细流程参见[送达、已读与重连补偿](/guide/delivery-read-reconnect)。
 
 ## 幂等发送
 
@@ -105,9 +106,10 @@ conversation_id = :conversation_id
 (sender_id, client_message_id)
 ```
 
-客户端第一次发送时，服务端生成 `server_message_id` 并保存消息。如果 ACK 丢失，客户
-端使用相同 `client_message_id` 重试，服务端查询并返回原消息，因此不会创建第二行，
-ACK 中的 `server_message_id` 也保持相同。
+客户端第一次发送时，服务端生成 `server_message_id` 并保存消息。如果 `accepted`
+响应丢失，客户端使用相同 `client_message_id` 重试，服务端查询并返回原消息，因此不会
+创建第二行，
+`accepted` 中的 `server_message_id` 也保持相同。
 
 数据库唯一约束仍然必需。两个并发请求可能同时执行“查询不到”，随后一起插入；只有
 数据库能在最终写入点原子地接受一个并拒绝另一个。应用捕获唯一约束冲突后，会创建

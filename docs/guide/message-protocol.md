@@ -57,23 +57,27 @@ ws://127.0.0.1:8000/ws
 `server_message_id` 由服务端生成。`sent_at` 在当前版本映射消息领域创建时间，并使用
 带时区的 UTC 时间。
 
-## ACK 确认
+## accepted 持久化确认
 
-消息成功投递到目标连接后，发送方收到：
+消息成功提交到数据库后，发送方收到：
 
 ```json
 {
-  "type": "ack",
+  "type": "accepted",
   "client_message_id": "5cbe59a7-1c45-4dd9-9302-d9eb2586bb6b",
-  "server_message_id": "e6935df2-343f-4915-bcb7-fbd45891fd60"
+  "server_message_id": "e6935df2-343f-4915-bcb7-fbd45891fd60",
+  "conversation_id": "31487468-dd7c-4de9-ac2b-fd5b979da2b8",
+  "push_status": "pushed"
 }
 ```
 
-当前 ACK 只表示服务端已向目标 WebSocket 连接执行发送，不表示用户已经阅读消息。
+`accepted` 只表示服务端已经持久化，不表示接收客户端已经处理或用户已经阅读消息。
+`push_status` 可能是 `pushed`、`recipient_offline` 或 `failed`，只用于观察实时推送。
 使用相同 `client_message_id` 重试时，服务端返回原消息的同一个 `server_message_id`。
 实时消息事件可能再次推送，客户端应按 `server_message_id` 去重。
 
 历史查询和离线恢复参见[历史分页、离线恢复与幂等](/guide/message-history)。
+累计确认和重连协议参见[送达、已读与重连补偿](/guide/delivery-read-reconnect)。
 
 ## 错误事件
 
@@ -82,8 +86,8 @@ ws://127.0.0.1:8000/ws
 ```json
 {
   "type": "error",
-  "code": "recipient_offline",
-  "message": "用户 user-b 不在线",
+  "code": "invalid_message",
+  "message": "消息字段验证失败",
   "client_message_id": "5cbe59a7-1c45-4dd9-9302-d9eb2586bb6b"
 }
 ```
@@ -94,10 +98,11 @@ ws://127.0.0.1:8000/ws
 | --- | --- |
 | `invalid_json` | 消息不是合法 JSON |
 | `invalid_message` | 命令字段或领域值不合法 |
-| `recipient_offline` | 目标用户当前没有可用连接 |
-| `delivery_failed` | 目标连接存在，但实时推送过程失败 |
 | `message_storage_failed` | 消息保存失败，因此没有执行实时推送 |
 | `conversation_unavailable` | 会话不存在或当前用户不是成员 |
+| `invalid_position` | 送达、已读或同步位置无效或越界 |
+| `position_storage_failed` | 累计确认保存失败 |
+| `sync_storage_failed` | 重连补偿查询失败 |
 
 一对一会话固定包含两名不同用户，因此不支持自发消息。
 
