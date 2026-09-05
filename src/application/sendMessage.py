@@ -9,7 +9,6 @@ from src.application.exceptions import (
     MessageStorageError,
 )
 from src.application.models import (
-    DeliveryOutcome,
     SendMessageCommand,
     SendMessageResult,
     SendMessageStatus,
@@ -106,14 +105,10 @@ class SendMessageService:
             )
 
         delivery_outcome = await self._notifier.deliver(message)
-        status_by_outcome = {
-            DeliveryOutcome.DELIVERED: SendMessageStatus.DELIVERED,
-            DeliveryOutcome.RECIPIENT_OFFLINE: (SendMessageStatus.RECIPIENT_OFFLINE),
-            DeliveryOutcome.FAILED: SendMessageStatus.DELIVERY_FAILED,
-        }
         return SendMessageResult(
-            status=status_by_outcome[delivery_outcome],
+            status=SendMessageStatus.ACCEPTED,
             message=message,
+            push_outcome=delivery_outcome,
         )
 
     async def _getExistingMessage(

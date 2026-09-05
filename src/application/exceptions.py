@@ -51,3 +51,7 @@ class ConversationStorageError(RuntimeError):
 
 class ConversationStorageConflictError(ConversationStorageError):
     """会话成员组合与数据库唯一约束冲突。"""
+
+
+class InvalidConversationPosition(ValueError):
+    """送达、已读或重连位置不属于目标会话或超出允许范围。"""

@@ -23,9 +23,9 @@ class SendMessageCommand:
 
 
 class DeliveryOutcome(StrEnum):
-    """实时通知端口能够返回的投递结果。"""
+    """实时推送尝试的观测结果，不表示客户端已经确认。"""
 
-    DELIVERED = "delivered"
+    PUSHED = "pushed"
     RECIPIENT_OFFLINE = "recipient_offline"
     FAILED = "failed"
 
@@ -33,9 +33,7 @@ class DeliveryOutcome(StrEnum):
 class SendMessageStatus(StrEnum):
     """发送消息用例的最终结果。"""
 
-    DELIVERED = "delivered"
-    RECIPIENT_OFFLINE = "recipient_offline"
-    DELIVERY_FAILED = "delivery_failed"
+    ACCEPTED = "accepted"
     STORAGE_FAILED = "storage_failed"
     INVALID_MESSAGE = "invalid_message"
     CONVERSATION_UNAVAILABLE = "conversation_unavailable"
@@ -47,6 +45,7 @@ class SendMessageResult:
 
     status: SendMessageStatus
     message: ChatMessage | None = None
+    push_outcome: DeliveryOutcome | None = None
 
 
 @dataclass(frozen=True, slots=True)
