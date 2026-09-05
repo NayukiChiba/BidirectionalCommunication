@@ -19,10 +19,12 @@ from src.adapters.database import (
 )
 from src.adapters.security import JwtAccessTokenProvider, PwdlibPasswordHasher
 from src.application import (
+    AdvanceConversationPositionService,
     AuthenticationService,
     CreateConversationService,
     GetMessageHistoryService,
     SendMessageService,
+    SyncMessagesService,
 )
 from src.config import DATABASE_PATH, AuthSettings
 from src.entrypoints import (
@@ -74,6 +76,10 @@ def create_app(
         unit_of_work_factory,
         conversation_unit_of_work_factory,
     )
+    position_service = AdvanceConversationPositionService(
+        conversation_unit_of_work_factory
+    )
+    sync_service = SyncMessagesService(position_service, history_service)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -96,6 +102,8 @@ def create_app(
     app.state.history_service = history_service
     app.state.authentication_service = authentication_service
     app.state.conversation_service = conversation_service
+    app.state.position_service = position_service
+    app.state.sync_service = sync_service
     app.include_router(
         createAuthenticationRouter(
             authentication_service,
@@ -113,6 +121,8 @@ def create_app(
             send_message_service=send_message_service,
             connection_gateway=connection_manager,
             authenticationService=authentication_service,
+            positionService=position_service,
+            syncService=sync_service,
         )
     )
     app.include_router(
