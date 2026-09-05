@@ -1,5 +1,8 @@
 """异步 SQLAlchemy 数据库基础设施公开接口。"""
 
+from src.adapters.database.asyncSqlAlchemyConversationProgressRepository import (
+    AsyncSqlAlchemyConversationProgressRepository,
+)
 from src.adapters.database.asyncSqlAlchemyConversationRepository import (
     AsyncSqlAlchemyConversationRepository,
 )
@@ -41,6 +44,7 @@ from src.adapters.database.models import (
 from src.adapters.database.userMapper import toDomainUser, toUserRecord
 
 __all__ = [
+    "AsyncSqlAlchemyConversationProgressRepository",
     "AsyncSqlAlchemyConversationRepository",
     "AsyncSqlAlchemyConversationUnitOfWork",
     "AsyncSqlAlchemyConversationUnitOfWorkFactory",

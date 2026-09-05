@@ -5,14 +5,24 @@ from types import TracebackType
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.adapters.database.asyncSqlAlchemyConversationProgressRepository import (
+    AsyncSqlAlchemyConversationProgressRepository,
+)
 from src.adapters.database.asyncSqlAlchemyConversationRepository import (
     AsyncSqlAlchemyConversationRepository,
 )
-from src.application.conversationPorts import ConversationRepository
+from src.adapters.database.asyncSqlAlchemyMessageRepository import (
+    AsyncSqlAlchemyMessageRepository,
+)
+from src.application.conversationPorts import (
+    ConversationProgressRepository,
+    ConversationRepository,
+)
 from src.application.exceptions import (
     ConversationStorageConflictError,
     ConversationStorageError,
 )
+from src.application.ports import MessageRepository
 
 
 class AsyncSqlAlchemyConversationUnitOfWork:
@@ -23,6 +33,8 @@ class AsyncSqlAlchemyConversationUnitOfWork:
         self._sessionFactory = sessionFactory
         self._session: AsyncSession | None = None
         self.conversations: ConversationRepository
+        self.progress: ConversationProgressRepository
+        self.messages: MessageRepository
 
     async def __aenter__(self) -> "AsyncSqlAlchemyConversationUnitOfWork":
         """创建本次操作独占的 AsyncSession 和 Repository。"""
@@ -30,6 +42,8 @@ class AsyncSqlAlchemyConversationUnitOfWork:
             raise RuntimeError("同一个会话工作单元不能重复进入")
         self._session = self._sessionFactory()
         self.conversations = AsyncSqlAlchemyConversationRepository(self._session)
+        self.progress = AsyncSqlAlchemyConversationProgressRepository(self._session)
+        self.messages = AsyncSqlAlchemyMessageRepository(self._session)
         return self
 
     async def __aexit__(

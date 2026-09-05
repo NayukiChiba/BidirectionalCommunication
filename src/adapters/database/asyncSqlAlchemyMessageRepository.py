@@ -8,7 +8,13 @@ from src.adapters.database.messageMapper import toDomainMessage, toMessageRecord
 from src.adapters.database.models import MessageRecord
 from src.application.exceptions import MessageStorageError
 from src.application.models import MessageCursor
-from src.domain import ChatMessage, ClientMessageId, ConversationId, UserId
+from src.domain import (
+    ChatMessage,
+    ClientMessageId,
+    ConversationId,
+    MessageId,
+    UserId,
+)
 
 
 class AsyncSqlAlchemyMessageRepository:
@@ -40,6 +46,17 @@ class AsyncSqlAlchemyMessageRepository:
             record = result.one_or_none()
         except SQLAlchemyError as error:
             raise MessageStorageError("查询幂等消息失败") from error
+        return toDomainMessage(record) if record is not None else None
+
+    async def getById(self, messageId: MessageId) -> ChatMessage | None:
+        """按服务端消息 ID 查询领域消息。"""
+        statement = select(MessageRecord).where(
+            MessageRecord.messageId == str(messageId)
+        )
+        try:
+            record = (await self._session.scalars(statement)).one_or_none()
+        except SQLAlchemyError as error:
+            raise MessageStorageError("按消息 ID 查询消息失败") from error
         return toDomainMessage(record) if record is not None else None
 
     async def listByConversation(

@@ -190,6 +190,14 @@ class ConversationMemberRecord(DatabaseBase):
             "member_position",
             name="uq_conversation_members_position",
         ),
+        CheckConstraint(
+            "(delivered_created_at IS NULL) = (delivered_message_id IS NULL)",
+            name="ck_conversation_members_delivered_pair",
+        ),
+        CheckConstraint(
+            "(read_created_at IS NULL) = (read_message_id IS NULL)",
+            name="ck_conversation_members_read_pair",
+        ),
     )
 
     conversationId: Mapped[str] = mapped_column(
@@ -206,5 +214,25 @@ class ConversationMemberRecord(DatabaseBase):
         "member_position",
         Integer,
         nullable=False,
+    )
+    deliveredCreatedAt: Mapped[datetime | None] = mapped_column(
+        "delivered_created_at",
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    deliveredMessageId: Mapped[str | None] = mapped_column(
+        "delivered_message_id",
+        ForeignKey("messages.message_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    readCreatedAt: Mapped[datetime | None] = mapped_column(
+        "read_created_at",
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    readMessageId: Mapped[str | None] = mapped_column(
+        "read_message_id",
+        ForeignKey("messages.message_id", ondelete="RESTRICT"),
+        nullable=True,
     )
     conversation: Mapped[ConversationRecord] = relationship(back_populates="members")
