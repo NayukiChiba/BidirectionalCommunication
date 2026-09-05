@@ -5,6 +5,7 @@ from src.domain.conversation import (
     ConversationId,
     createConversation,
 )
+from src.domain.delivery import ConversationProgress, MessagePosition
 from src.domain.exceptions import (
     ConversationMemberRequired,
     DomainError,
@@ -15,10 +16,12 @@ from src.domain.exceptions import (
     InvalidMessageContent,
     InvalidMessageCreatedAt,
     InvalidMessageId,
+    InvalidMessagePosition,
     InvalidPasswordHash,
     InvalidUser,
     InvalidUserId,
     InvalidUsername,
+    ReadPositionBeyondDelivery,
 )
 from src.domain.identifiers import UserId
 from src.domain.message import (
@@ -36,6 +39,7 @@ __all__ = [
     "Conversation",
     "ConversationId",
     "ConversationMemberRequired",
+    "ConversationProgress",
     "DomainError",
     "InvalidChatMessage",
     "InvalidConversation",
@@ -44,13 +48,16 @@ __all__ = [
     "InvalidMessageContent",
     "InvalidMessageCreatedAt",
     "InvalidMessageId",
+    "InvalidMessagePosition",
     "InvalidPasswordHash",
     "InvalidUser",
     "InvalidUserId",
     "InvalidUsername",
     "MessageContent",
     "MessageId",
+    "MessagePosition",
     "PasswordHash",
+    "ReadPositionBeyondDelivery",
     "User",
     "UserId",
     "Username",

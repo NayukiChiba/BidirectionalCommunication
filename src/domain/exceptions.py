@@ -51,3 +51,11 @@ class InvalidConversation(DomainError):
 
 class ConversationMemberRequired(DomainError):
     """用户不是当前会话成员。"""
+
+
+class InvalidMessagePosition(DomainError):
+    """累计消息位置不合法。"""
+
+
+class ReadPositionBeyondDelivery(DomainError):
+    """已读位置超过当前已送达位置。"""
