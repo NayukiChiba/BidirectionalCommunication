@@ -3,7 +3,14 @@
 from types import TracebackType
 from typing import Protocol
 
-from src.domain import Conversation, ConversationId, UserId
+from src.application.ports import MessageRepository
+from src.domain import (
+    Conversation,
+    ConversationId,
+    ConversationProgress,
+    MessagePosition,
+    UserId,
+)
 
 
 class ConversationRepository(Protocol):
@@ -29,10 +36,42 @@ class ConversationRepository(Protocol):
         ...
 
 
+class ConversationProgressRepository(Protocol):
+    """会话成员累计送达和已读位置的原子存储端口。"""
+
+    async def get(
+        self,
+        conversationId: ConversationId,
+        memberId: UserId,
+    ) -> ConversationProgress | None:
+        """读取指定成员当前累计位置。"""
+        ...
+
+    async def advanceDelivered(
+        self,
+        conversationId: ConversationId,
+        memberId: UserId,
+        position: MessagePosition,
+    ) -> bool:
+        """仅在目标更靠后时原子推进已送达位置。"""
+        ...
+
+    async def advanceRead(
+        self,
+        conversationId: ConversationId,
+        memberId: UserId,
+        position: MessagePosition,
+    ) -> bool:
+        """仅在已送达范围内原子推进已读位置。"""
+        ...
+
+
 class ConversationUnitOfWork(Protocol):
     """一次会话聚合操作的原子事务边界。"""
 
     conversations: ConversationRepository
+    progress: ConversationProgressRepository
+    messages: MessageRepository
 
     async def __aenter__(self) -> "ConversationUnitOfWork":
         """进入事务并提供会话 Repository。"""

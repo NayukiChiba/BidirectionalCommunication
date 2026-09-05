@@ -1,5 +1,8 @@
 """应用层公开接口。"""
 
+from src.application.advanceConversationPosition import (
+    AdvanceConversationPositionService,
+)
 from src.application.authentication import AuthenticationService
 from src.application.authModels import (
     MAX_PASSWORD_LENGTH,
@@ -21,17 +24,26 @@ from src.application.conversationModels import (
     CreateConversationResult,
 )
 from src.application.conversationPorts import (
+    ConversationProgressRepository,
     ConversationRepository,
     ConversationUnitOfWork,
     ConversationUnitOfWorkFactory,
 )
 from src.application.createConversation import CreateConversationService
+from src.application.deliveryModels import (
+    AdvancePositionCommand,
+    AdvancePositionResult,
+    PositionKind,
+    SyncMessagesCommand,
+    SyncMessagesResult,
+)
 from src.application.exceptions import (
     AuthenticationError,
     ConversationStorageConflictError,
     ConversationStorageError,
     ConversationUnavailable,
     InvalidAccessToken,
+    InvalidConversationPosition,
     InvalidConversationRequest,
     InvalidCredentials,
     InvalidMessageHistoryQuery,
@@ -60,13 +72,18 @@ from src.application.ports import (
     MessageUnitOfWorkFactory,
 )
 from src.application.sendMessage import SendMessageService
+from src.application.syncMessages import SyncMessagesService
 
 __all__ = [
+    "AdvanceConversationPositionService",
+    "AdvancePositionCommand",
+    "AdvancePositionResult",
     "AccessToken",
     "AccessTokenProvider",
     "AuthenticationError",
     "AuthenticationService",
     "ConversationRepository",
+    "ConversationProgressRepository",
     "ConversationStorageConflictError",
     "ConversationStorageError",
     "ConversationUnavailable",
@@ -80,6 +97,7 @@ __all__ = [
     "GetMessageHistoryService",
     "InvalidAccessToken",
     "InvalidConversationRequest",
+    "InvalidConversationPosition",
     "InvalidCredentials",
     "InvalidMessageHistoryQuery",
     "InvalidRegistration",
@@ -97,11 +115,15 @@ __all__ = [
     "MessageUnitOfWork",
     "MessageUnitOfWorkFactory",
     "PasswordHasher",
+    "PositionKind",
     "RegisterUserCommand",
     "SendMessageCommand",
     "SendMessageResult",
     "SendMessageService",
     "SendMessageStatus",
+    "SyncMessagesCommand",
+    "SyncMessagesResult",
+    "SyncMessagesService",
     "UserIdentity",
     "UserRepository",
     "UserStorageError",
