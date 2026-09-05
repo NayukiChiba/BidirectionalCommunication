@@ -26,13 +26,14 @@ features:
 
 ## 当前阶段
 
-项目已经完成单进程 WebSocket 私聊 v0.1、`M3 分层内核 v0.2` 和
-`M4 持久化聊天 v0.3`，正在进入 `M5 可信私聊 v0.9`。当前通过 Repository 与
-Unit of Work 使用异步 SQLAlchemy，
+项目已经完成单进程 WebSocket 私聊 v0.1、`M3 分层内核 v0.2`、
+`M4 持久化聊天 v0.3` 和 `M5 可信私聊 v0.4`。当前通过 Repository 与 Unit of Work
+使用异步 SQLAlchemy，
 由 Alembic 管理数据库结构，并提供稳定游标历史查询、离线主动恢复和消息幂等。
 每个并发 Task 使用独立 AsyncSession，数据库等待不会阻塞其他连接的事件循环调度。
 HTTP 与 WebSocket 已使用同一短期 Bearer JWT 建立可信用户身份。
 一对一会话现在具有稳定身份和数据库成员约束，只有会话成员可以发送或读取消息。
+累计送达与已读位置只会向前推进，客户端可在 WebSocket 重连后幂等补齐缺失消息。
 
 ## 文档导航
 
