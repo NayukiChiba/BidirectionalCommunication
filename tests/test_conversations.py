@@ -160,4 +160,6 @@ def test_explicit_conversation_id_sends_to_other_member(
 
     assert messageEvent["conversation_id"] == conversation["conversation_id"]
     assert messageEvent["recipient_id"] == userB.userId
+    assert acknowledgement["type"] == "accepted"
+    assert acknowledgement["push_status"] == "pushed"
     assert acknowledgement["server_message_id"] == messageEvent["server_message_id"]

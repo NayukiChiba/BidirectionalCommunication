@@ -43,10 +43,10 @@ def test_duplicate_login_replaces_old_connection(
                     "client_message_id": clientMessageId,
                 }
             )
-            errorEvent = newWebSocket.receive_json()
+            acceptedEvent = newWebSocket.receive_json()
 
-            assert errorEvent["type"] == "error"
-            assert errorEvent["code"] == "recipient_offline"
+            assert acceptedEvent["type"] == "accepted"
+            assert acceptedEvent["push_status"] == "recipient_offline"
 
     assert connectionManager.is_online(user.userId) is False
 

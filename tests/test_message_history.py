@@ -208,7 +208,9 @@ def test_offline_message_can_be_pulled_after_previous_cursor(
                 "client_message_id": firstClientMessageId,
             }
         )
-        assert senderWebSocket.receive_json()["code"] == "recipient_offline"
+        acceptedEvent = senderWebSocket.receive_json()
+        assert acceptedEvent["type"] == "accepted"
+        assert acceptedEvent["push_status"] == "recipient_offline"
 
     firstPage = testClient.get(
         f"/conversations/{conversationId}/messages",
@@ -227,7 +229,9 @@ def test_offline_message_can_be_pulled_after_previous_cursor(
                 "client_message_id": secondClientMessageId,
             }
         )
-        assert senderWebSocket.receive_json()["code"] == "recipient_offline"
+        acceptedEvent = senderWebSocket.receive_json()
+        assert acceptedEvent["type"] == "accepted"
+        assert acceptedEvent["push_status"] == "recipient_offline"
 
     missingPage = testClient.get(
         f"/conversations/{conversationId}/messages",

@@ -38,7 +38,7 @@ class FakeConnectionSender:
     [
         pytest.param(
             ConnectionSendOutcome.DELIVERED,
-            DeliveryOutcome.DELIVERED,
+            DeliveryOutcome.PUSHED,
             id="delivered",
         ),
         pytest.param(

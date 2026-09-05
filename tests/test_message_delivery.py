@@ -79,7 +79,8 @@ def test_bidirectional_message_send_and_receive(
         assert message_event["recipient_id"] == userB.userId
         assert message_event["sender_id"] == userA.userId
 
-        assert ack_event["type"] == "ack"
+        assert ack_event["type"] == "accepted"
+        assert ack_event["push_status"] == "pushed"
         assert ack_event["client_message_id"] == clientMessageId
         assert ack_event["server_message_id"] == message_event["server_message_id"]
         UUID(message_event["server_message_id"])
@@ -91,7 +92,8 @@ def test_bidirectional_message_send_and_receive(
         assert message_event["recipient_id"] == userA.userId
         assert message_event["sender_id"] == userB.userId
 
-        assert ack_event["type"] == "ack"
+        assert ack_event["type"] == "accepted"
+        assert ack_event["push_status"] == "pushed"
         assert ack_event["client_message_id"] == user_b_client_message_id
         assert ack_event["server_message_id"] == message_event["server_message_id"]
         UUID(message_event["server_message_id"])
@@ -131,7 +133,8 @@ def test_deliver_message_and_acknowledge_sender(
     assert message_event["sender_id"] == userA.userId
     UUID(message_event["server_message_id"])
 
-    assert ack_event["type"] == "ack"
+    assert ack_event["type"] == "accepted"
+    assert ack_event["push_status"] == "pushed"
     assert ack_event["client_message_id"] == client_message_id
     assert ack_event["server_message_id"] == message_event["server_message_id"]
 
@@ -157,11 +160,11 @@ def test_send_message_to_offline_recipient(
                 "client_message_id": client_message_id,
             }
         )
-        error_event = sender_websocket.receive_json()
+        acceptedEvent = sender_websocket.receive_json()
 
-    assert error_event["type"] == "error"
-    assert error_event["code"] == "recipient_offline"
-    assert error_event["client_message_id"] == client_message_id
+    assert acceptedEvent["type"] == "accepted"
+    assert acceptedEvent["push_status"] == "recipient_offline"
+    assert acceptedEvent["client_message_id"] == client_message_id
 
 
 def test_reject_self_conversation(

@@ -247,13 +247,14 @@ def createService(
 async def test_send_message_commits_before_delivering_domain_message() -> None:
     """成功用例应提交消息后再投递同一领域实体。"""
     unitOfWorkFactory = FakeMessageUnitOfWorkFactory()
-    notifier = FakeMessageNotifier(DeliveryOutcome.DELIVERED, unitOfWorkFactory.events)
+    notifier = FakeMessageNotifier(DeliveryOutcome.PUSHED, unitOfWorkFactory.events)
     service = createService(unitOfWorkFactory, notifier)
 
     result = await service.send(makeCommand(content="  Hello  "))
 
     unitOfWork = unitOfWorkFactory.createdUnits[0]
-    assert result.status is SendMessageStatus.DELIVERED
+    assert result.status is SendMessageStatus.ACCEPTED
+    assert result.push_outcome is DeliveryOutcome.PUSHED
     assert result.message is not None
     assert result.message.content.value == "Hello"
     assert result.message.message_id.value.version == 4
@@ -274,23 +275,20 @@ async def test_send_message_commits_before_delivering_domain_message() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("deliveryOutcome", "expectedStatus"),
+    "deliveryOutcome",
     [
         pytest.param(
             DeliveryOutcome.RECIPIENT_OFFLINE,
-            SendMessageStatus.RECIPIENT_OFFLINE,
             id="recipient-offline",
         ),
         pytest.param(
             DeliveryOutcome.FAILED,
-            SendMessageStatus.DELIVERY_FAILED,
             id="delivery-failed",
         ),
     ],
 )
 async def test_send_message_keeps_commit_when_delivery_does_not_succeed(
     deliveryOutcome: DeliveryOutcome,
-    expectedStatus: SendMessageStatus,
 ) -> None:
     """离线或推送失败时应保留已经提交的消息。"""
     unitOfWorkFactory = FakeMessageUnitOfWorkFactory()
@@ -300,7 +298,8 @@ async def test_send_message_keeps_commit_when_delivery_does_not_succeed(
     result = await service.send(makeCommand())
 
     unitOfWork = unitOfWorkFactory.createdUnits[0]
-    assert result.status is expectedStatus
+    assert result.status is SendMessageStatus.ACCEPTED
+    assert result.push_outcome is deliveryOutcome
     assert result.message is not None
     assert unitOfWork.messages.messages == [result.message]
     assert unitOfWork.committed is True
@@ -312,7 +311,7 @@ async def test_send_message_rolls_back_and_stops_when_repository_fails() -> None
     """Repository 保存失败时必须回滚且不能通知。"""
     storageError = MessageStorageError("模拟消息保存失败")
     unitOfWorkFactory = FakeMessageUnitOfWorkFactory(storageError=storageError)
-    notifier = FakeMessageNotifier(DeliveryOutcome.DELIVERED, unitOfWorkFactory.events)
+    notifier = FakeMessageNotifier(DeliveryOutcome.PUSHED, unitOfWorkFactory.events)
     service = createService(unitOfWorkFactory, notifier)
 
     result = await service.send(makeCommand())
@@ -337,7 +336,7 @@ async def test_send_message_rolls_back_and_stops_when_commit_fails() -> None:
     """提交失败时不能返回成功或尝试实时通知。"""
     commitError = MessageStorageError("模拟事务提交失败")
     unitOfWorkFactory = FakeMessageUnitOfWorkFactory(commitError=commitError)
-    notifier = FakeMessageNotifier(DeliveryOutcome.DELIVERED, unitOfWorkFactory.events)
+    notifier = FakeMessageNotifier(DeliveryOutcome.PUSHED, unitOfWorkFactory.events)
     service = createService(unitOfWorkFactory, notifier)
 
     result = await service.send(makeCommand())
@@ -364,7 +363,7 @@ async def test_unexpected_storage_exception_rolls_back_and_propagates() -> None:
     unitOfWorkFactory = FakeMessageUnitOfWorkFactory(
         storageError=RuntimeError("未知存储异常")
     )
-    notifier = FakeMessageNotifier(DeliveryOutcome.DELIVERED, unitOfWorkFactory.events)
+    notifier = FakeMessageNotifier(DeliveryOutcome.PUSHED, unitOfWorkFactory.events)
     service = createService(unitOfWorkFactory, notifier)
 
     with pytest.raises(RuntimeError, match="未知存储异常"):
@@ -379,7 +378,7 @@ async def test_unexpected_storage_exception_rolls_back_and_propagates() -> None:
 async def test_send_message_rejects_invalid_domain_input_before_creating_uow() -> None:
     """非法领域输入不能创建工作单元或触发通知。"""
     unitOfWorkFactory = FakeMessageUnitOfWorkFactory()
-    notifier = FakeMessageNotifier(DeliveryOutcome.DELIVERED, unitOfWorkFactory.events)
+    notifier = FakeMessageNotifier(DeliveryOutcome.PUSHED, unitOfWorkFactory.events)
     service = createService(unitOfWorkFactory, notifier)
 
     result = await service.send(makeCommand(content="   "))
@@ -394,7 +393,7 @@ async def test_send_message_rejects_invalid_domain_input_before_creating_uow() -
 async def test_send_message_rejects_non_member() -> None:
     """已登录但不属于目标会话的用户不能发送消息。"""
     unitOfWorkFactory = FakeMessageUnitOfWorkFactory()
-    notifier = FakeMessageNotifier(DeliveryOutcome.DELIVERED, unitOfWorkFactory.events)
+    notifier = FakeMessageNotifier(DeliveryOutcome.PUSHED, unitOfWorkFactory.events)
     service = createService(unitOfWorkFactory, notifier)
 
     result = await service.send(makeCommand(senderId="user-c"))
@@ -409,15 +408,15 @@ async def test_send_message_rejects_non_member() -> None:
 async def test_duplicate_command_returns_original_server_message() -> None:
     """重复客户端消息 ID 应返回同一条已提交消息。"""
     unitOfWorkFactory = FakeMessageUnitOfWorkFactory()
-    notifier = FakeMessageNotifier(DeliveryOutcome.DELIVERED, unitOfWorkFactory.events)
+    notifier = FakeMessageNotifier(DeliveryOutcome.PUSHED, unitOfWorkFactory.events)
     service = createService(unitOfWorkFactory, notifier)
     command = makeCommand()
 
     firstResult = await service.send(command)
     secondResult = await service.send(command)
 
-    assert firstResult.status is SendMessageStatus.DELIVERED
-    assert secondResult.status is SendMessageStatus.DELIVERED
+    assert firstResult.status is SendMessageStatus.ACCEPTED
+    assert secondResult.status is SendMessageStatus.ACCEPTED
     assert secondResult.message is firstResult.message
     assert unitOfWorkFactory.persistedMessages == [firstResult.message]
     assert notifier.messages == [firstResult.message, firstResult.message]
@@ -453,12 +452,12 @@ async def test_concurrent_conflict_recovers_original_message() -> None:
             """返回下一个预设工作单元。"""
             return unitOfWorks.pop(0)
 
-    notifier = FakeMessageNotifier(DeliveryOutcome.DELIVERED, events)
+    notifier = FakeMessageNotifier(DeliveryOutcome.PUSHED, events)
     service = createService(ConflictRecoveryFactory(), notifier)
 
     result = await service.send(makeCommand(clientMessageId=clientMessageId))
 
-    assert result.status is SendMessageStatus.DELIVERED
+    assert result.status is SendMessageStatus.ACCEPTED
     assert result.message is originalMessage
     assert notifier.messages == [originalMessage]
 

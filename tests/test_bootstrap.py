@@ -43,6 +43,8 @@ def test_create_app_composes_dependencies_and_routes(tmp_path: Path) -> None:
     assert app.state.history_service is not None
     assert app.state.authentication_service is not None
     assert app.state.conversation_service is not None
+    assert app.state.position_service is not None
+    assert app.state.sync_service is not None
     with TestClient(app) as client:
         response = client.get("/health")
         assert response.status_code == 200

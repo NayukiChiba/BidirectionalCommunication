@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -28,6 +28,15 @@ from src.adapters.database.migrationConfig import (
 from src.application import (
     CreateConversationCommand,
     CreateConversationService,
+)
+from src.domain import (
+    ChatMessage,
+    ClientMessageId,
+    ConversationId,
+    MessageContent,
+    MessageId,
+    MessagePosition,
+    UserId,
 )
 
 
@@ -107,9 +116,15 @@ def test_conversation_tables_express_member_constraints(tmp_path: Path) -> None:
     assert memberUnique == {("conversation_id", "member_position")}
     assert memberForeignKeys == {
         (("conversation_id",), "conversations"),
+        (("delivered_message_id",), "messages"),
+        (("read_message_id",), "messages"),
         (("user_id",), "users"),
     }
-    assert memberChecks == {"ck_conversation_members_position"}
+    assert memberChecks == {
+        "ck_conversation_members_delivered_pair",
+        "ck_conversation_members_position",
+        "ck_conversation_members_read_pair",
+    }
 
 
 @pytest.mark.asyncio
@@ -141,3 +156,60 @@ async def test_concurrent_create_or_get_returns_one_conversation(
         )
     assert conversationCount == 1
     assert memberCount == 2
+
+
+@pytest.mark.asyncio
+async def test_concurrent_delivery_updates_cannot_move_position_backwards(
+    sessionFactory: async_sessionmaker[AsyncSession],
+) -> None:
+    """较旧确认晚提交时也不能覆盖已经前进的累计送达位置。"""
+    userAId, userBId = await getUserIds(sessionFactory)
+    unitOfWorkFactory = AsyncSqlAlchemyConversationUnitOfWorkFactory(sessionFactory)
+    service = CreateConversationService(
+        unitOfWorkFactory,
+        AsyncSqlAlchemyUserUnitOfWorkFactory(sessionFactory),
+    )
+    conversation = (
+        await service.createOrGet(CreateConversationCommand(userAId, userBId))
+    ).conversation
+    baseTime = datetime(2026, 9, 5, 9, 0, tzinfo=timezone.utc)
+    messages = tuple(
+        ChatMessage(
+            message_id=MessageId(uuid4()),
+            client_message_id=ClientMessageId(uuid4()),
+            conversation_id=conversation.conversation_id,
+            sender_id=UserId(userAId),
+            recipient_id=UserId(userBId),
+            content=MessageContent(f"message-{sequence}"),
+            created_at=baseTime + timedelta(seconds=sequence),
+        )
+        for sequence in (1, 2)
+    )
+    async with unitOfWorkFactory() as unitOfWork:
+        for message in messages:
+            await unitOfWork.messages.add(message)
+        await unitOfWork.commit()
+
+    async def advance(message: ChatMessage) -> bool:
+        """在独立事务中提交一个候选累计位置。"""
+        async with unitOfWorkFactory() as unitOfWork:
+            advanced = await unitOfWork.progress.advanceDelivered(
+                conversation.conversation_id,
+                UserId(userBId),
+                MessagePosition(message.created_at, message.message_id),
+            )
+            await unitOfWork.commit()
+            return advanced
+
+    await asyncio.gather(advance(messages[1]), advance(messages[0]))
+
+    async with unitOfWorkFactory() as unitOfWork:
+        progress = await unitOfWork.progress.get(
+            ConversationId(conversation.conversation_id.value),
+            UserId(userBId),
+        )
+    assert progress is not None
+    assert progress.delivered_position == MessagePosition(
+        messages[1].created_at,
+        messages[1].message_id,
+    )

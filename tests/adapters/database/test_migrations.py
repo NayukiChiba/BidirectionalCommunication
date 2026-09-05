@@ -12,7 +12,7 @@ from src.adapters.database.migrationConfig import (
 )
 from src.config import PROJECT_ROOT
 
-HEAD_REVISION = "c18a4f7d2e91"
+HEAD_REVISION = "d19b6c8e4f02"
 
 
 def getCurrentRevision(databasePath: Path) -> str | None:
