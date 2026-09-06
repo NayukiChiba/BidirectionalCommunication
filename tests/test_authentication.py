@@ -137,6 +137,10 @@ def test_http_rejects_missing_or_invalid_token(
 
     assert meResponse.status_code == 401
     assert historyResponse.status_code == 401
+    assert meResponse.json()["detail"] == "无法验证身份凭证"
+    assert historyResponse.json()["detail"] == "无法验证身份凭证"
+    assert meResponse.headers["www-authenticate"] == "Bearer"
+    assert historyResponse.headers["www-authenticate"] == "Bearer"
 
 
 def test_http_and_websocket_reject_expired_token(testClient: TestClient) -> None:

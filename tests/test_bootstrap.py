@@ -13,7 +13,7 @@ from src.adapters.database.migrationConfig import (
     createMigrationConfig,
     createMigrationEngine,
 )
-from src.config import AuthSettings
+from src.config import AuthSettings, RuntimeSettings
 
 TEST_AUTH_SECRET = "test-auth-secret-" + ("x" * 64)
 
@@ -93,3 +93,22 @@ def test_create_app_returns_independent_compositions(tmp_path: Path) -> None:
         first_app.state.send_message_service
         is not second_app.state.send_message_service
     )
+
+
+def test_lifespan_stops_admission_before_releasing_resources(tmp_path: Path) -> None:
+    """应用关闭后连接管理器必须停止接入并清空连接状态。"""
+    databasePath = tmp_path / "graceful-shutdown.sqlite3"
+    command.upgrade(createMigrationConfig(databasePath), "head")
+    app = create_app(
+        databasePath=databasePath,
+        authSettings=createTestAuthSettings(),
+        runtimeSettings=RuntimeSettings(),
+    )
+    manager = app.state.connection_manager
+
+    with TestClient(app) as client:
+        assert client.get("/health/live").status_code == 200
+        assert manager.acceptingConnections is True
+
+    assert manager.acceptingConnections is False
+    assert manager.connectionCount == 0

@@ -4,10 +4,6 @@ from fastapi.testclient import TestClient
 
 from tests.conftest import AuthenticatedTestUser
 
-# TODO(Issue 08 - 协议错误补全): 在已有非法 JSON、空白内容、错误 type 和发送者
-# 防伪造测试基础上，补充缺少字段、超长字段和其他多余字段，并校验稳定错误结构及
-# 可获得时的 client_message_id。发送者伪造用例还应确认接收方未收到消息。
-
 
 def test_websocket_invalid_json(
     testClient: TestClient,
@@ -94,6 +90,31 @@ def test_websocket_rejects_forged_sender_id(
                 "conversation_id": conversationId,
                 "content": "伪造发送者",
                 "client_message_id": "ff3596a2-cf49-45b5-9502-f68b11a0f04b",
+            }
+        )
+        response = websocket.receive_json()
+
+    assert response["type"] == "error"
+    assert response["code"] == "invalid_message"
+
+
+def test_websocket_rejects_content_over_field_limit(
+    testClient: TestClient,
+    authenticatedUsers: dict[str, AuthenticatedTestUser],
+    conversationId: str,
+) -> None:
+    """字节总量合法时，正文仍不能超过协议字段长度。"""
+    user = authenticatedUsers["user-a"]
+    with testClient.websocket_connect(
+        "/ws",
+        headers=user.authorizationHeaders,
+    ) as websocket:
+        websocket.send_json(
+            {
+                "type": "send_message",
+                "conversation_id": conversationId,
+                "content": "x" * 2001,
+                "client_message_id": "aa3596a2-cf49-45b5-9502-f68b11a0f04b",
             }
         )
         response = websocket.receive_json()

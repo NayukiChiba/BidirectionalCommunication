@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from src.config import AuthSettings
+from src.config import AuthSettings, RuntimeSettings
 
 
 def test_auth_settings_requires_environment_secret(
@@ -41,3 +41,44 @@ def test_auth_settings_hides_secret_and_validates_expiration() -> None:
             accessTokenExpireMinutes=0,
             _env_file=None,
         )
+
+
+def test_runtime_settings_read_limits_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """单实例安全限制应由统一环境配置读取。"""
+    monkeypatch.setenv("WS_MAX_MESSAGE_BYTES", "4096")
+    monkeypatch.setenv("WS_INPUT_RATE_LIMIT_COUNT", "5")
+    monkeypatch.setenv("WS_INPUT_RATE_LIMIT_WINDOW_SECONDS", "2.5")
+    monkeypatch.setenv("WS_MAX_CONNECTIONS", "20")
+    monkeypatch.setenv("READINESS_TIMEOUT_SECONDS", "0.5")
+    monkeypatch.setenv("LOG_LEVEL", "WARNING")
+
+    settings = RuntimeSettings(_env_file=None)
+
+    assert settings.maxWebSocketMessageBytes == 4096
+    assert settings.inputRateLimitCount == 5
+    assert settings.inputRateLimitWindowSeconds == 2.5
+    assert settings.maxWebSocketConnections == 20
+    assert settings.readinessTimeoutSeconds == 0.5
+    assert settings.logLevel == "WARNING"
+
+
+@pytest.mark.parametrize(
+    ("fieldName", "value"),
+    [
+        ("maxWebSocketMessageBytes", 100),
+        ("inputRateLimitCount", 0),
+        ("inputRateLimitWindowSeconds", 0),
+        ("maxWebSocketConnections", 0),
+        ("readinessTimeoutSeconds", 0),
+        ("logLevel", "TRACE"),
+    ],
+)
+def test_runtime_settings_reject_invalid_security_limits(
+    fieldName: str,
+    value: object,
+) -> None:
+    """危险或不受支持的运行配置应在启动前快速失败。"""
+    with pytest.raises(ValidationError):
+        RuntimeSettings(**{fieldName: value}, _env_file=None)

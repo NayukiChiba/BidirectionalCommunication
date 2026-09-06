@@ -2,13 +2,18 @@
 Connection Manager 单元测试
 """
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from src.adapters import (
+    CONNECTION_LIMIT_CODE,
+    CONNECTION_LIMIT_REASON,
     DUPLICATE_CONNECTION_CODE,
     DUPLICATE_CONNECTION_REASON,
+    SERVICE_NOT_ACCEPTING_CODE,
+    SERVICE_NOT_ACCEPTING_REASON,
     SERVICE_SHUTDOWN_CODE,
     SERVICE_SHUTDOWN_REASON,
     ConnectionManager,
@@ -265,50 +270,48 @@ class TestConnectionManager:
         assert manager._connections == {}
 
     @pytest.mark.asyncio
-    async def test_send_message_to_user_accepts_legacy_user_id(
+    async def test_concurrent_connections_respect_single_instance_capacity(
+        self,
+    ) -> None:
+        """并发登记不同用户时不能突破配置的连接容量。"""
+        manager = ConnectionManager(maxConnections=2)
+        webSockets = []
+        for _ in range(3):
+            webSocket = MagicMock()
+            webSocket.accept = AsyncMock()
+            webSocket.close = AsyncMock()
+            webSockets.append(webSocket)
+
+        results = await asyncio.gather(
+            *(
+                manager.connect(f"user-{index}", webSocket)
+                for index, webSocket in enumerate(webSockets)
+            )
+        )
+
+        assert results.count(True) == 2
+        assert results.count(False) == 1
+        assert manager.connectionCount == 2
+        rejectedWebSocket = webSockets[results.index(False)]
+        rejectedWebSocket.close.assert_awaited_once_with(
+            code=CONNECTION_LIMIT_CODE,
+            reason=CONNECTION_LIMIT_REASON,
+        )
+
+    @pytest.mark.asyncio
+    async def test_stopping_manager_rejects_new_connections(
         self,
         manager: ConnectionManager,
         mock_websocket: MagicMock,
     ) -> None:
-        """测试兼容 user_id 参数并发出弃用警告"""
-        await manager.connect(user_id="user-a", websocket=mock_websocket)
+        """优雅关闭开始后不得继续接入新连接。"""
+        manager.stopAccepting()
 
-        with pytest.warns(DeprecationWarning, match="user_id 参数已弃用"):
-            result = await manager.send_message_to_user(
-                user_id="user-a",
-                data={"type": "message"},
-            )
+        connected = await manager.connect("user-a", mock_websocket)
 
-        assert result is True
-        mock_websocket.send_json.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_send_message_to_user_rejects_both_user_ids(
-        self,
-        manager: ConnectionManager,
-    ) -> None:
-        """测试不能同时提供 sender_id 和 user_id"""
-        with pytest.raises(TypeError, match="不能同时提供"):
-            await manager.send_message_to_user(
-                sender_id="user-a",
-                user_id="user-b",
-                data={"type": "message"},
-            )
-
-    @pytest.mark.asyncio
-    async def test_send_to_user_emits_deprecation_warning(
-        self,
-        manager: ConnectionManager,
-        mock_websocket: MagicMock,
-    ) -> None:
-        """测试旧函数保持可用并发出弃用警告"""
-        await manager.connect(user_id="user-a", websocket=mock_websocket)
-
-        with pytest.warns(DeprecationWarning, match=r"send_to_user\(\) 已弃用"):
-            result = await manager.send_to_user(
-                user_id="user-a",
-                data={"type": "message"},
-            )
-
-        assert result is True
-        mock_websocket.send_json.assert_awaited_once()
+        assert connected is False
+        assert manager.connectionCount == 0
+        mock_websocket.close.assert_awaited_once_with(
+            code=SERVICE_NOT_ACCEPTING_CODE,
+            reason=SERVICE_NOT_ACCEPTING_REASON,
+        )
