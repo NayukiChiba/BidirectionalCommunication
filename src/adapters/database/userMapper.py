@@ -27,7 +27,7 @@ def toDomainUser(record: UserRecord) -> User:
 
 
 def normalizeUserDatetime(value: datetime) -> datetime:
-    """把 SQLite 返回的无时区创建时间解释为 UTC。"""
+    """兼容 SQLite 无时区值，并把用户创建时间统一为 UTC。"""
     if value.tzinfo is None or value.utcoffset() is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)

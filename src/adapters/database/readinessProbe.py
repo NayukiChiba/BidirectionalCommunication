@@ -1,4 +1,4 @@
-"""SQLite 数据库就绪状态探测。"""
+"""数据库连接和迁移版本就绪状态探测。"""
 
 import asyncio
 import logging

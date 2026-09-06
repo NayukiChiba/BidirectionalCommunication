@@ -41,7 +41,7 @@ def toDomainMessage(record: MessageRecord) -> ChatMessage:
 
 
 def normalizeDatabaseDatetime(value: datetime) -> datetime:
-    """把 SQLite 返回的不带时区时间显式解释为 UTC。"""
+    """兼容 SQLite 无时区值，并把所有数据库时间统一为 UTC。"""
     if value.tzinfo is None or value.utcoffset() is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)

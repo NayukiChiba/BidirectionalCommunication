@@ -1,16 +1,10 @@
-"""
-异步数据库连接配置
-
-功能：
-1. 根据 pathlib 路径创建 aiosqlite URL 和 AsyncEngine
-2. 创建每次调用都返回独立 AsyncSession 的工厂
-"""
+"""SQLite 与 PostgreSQL 共用的异步 SQLAlchemy 连接配置。"""
 
 import sqlite3
 from pathlib import Path
 
 from sqlalchemy import event
-from sqlalchemy.engine import URL
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -20,6 +14,8 @@ from sqlalchemy.ext.asyncio import (
 
 from src.config import DATABASE_PATH
 
+SUPPORTED_DATABASE_BACKENDS = {"sqlite", "postgresql"}
+
 
 def createAsyncSqliteUrl(databasePath: Path = DATABASE_PATH) -> URL:
     """根据 pathlib 路径创建 aiosqlite 数据库 URL。"""
@@ -27,31 +23,75 @@ def createAsyncSqliteUrl(databasePath: Path = DATABASE_PATH) -> URL:
     return URL.create("sqlite+aiosqlite", database=str(resolvedPath))
 
 
-def createAsyncSqliteEngine(
-    databasePath: Path = DATABASE_PATH,
+def normalizeAsyncDatabaseUrl(databaseUrl: str | URL) -> URL:
+    """校验后端并为已支持数据库选择明确异步驱动。"""
+    url = make_url(databaseUrl) if isinstance(databaseUrl, str) else databaseUrl
+    backend = url.get_backend_name()
+    if backend not in SUPPORTED_DATABASE_BACKENDS:
+        raise ValueError(f"不支持的数据库后端：{backend}")
+    if backend == "sqlite":
+        return url.set(drivername="sqlite+aiosqlite")
+    return url.set(drivername="postgresql+asyncpg")
+
+
+def createAsyncDatabaseEngine(
+    databaseUrl: str | URL,
     *,
+    poolSize: int = 5,
+    maxOverflow: int = 10,
+    poolTimeoutSeconds: float = 30.0,
+    poolRecycleSeconds: int = 1_800,
     echo: bool = False,
 ) -> AsyncEngine:
-    """创建指向 SQLite 文件的异步 Engine。"""
-    resolvedPath = databasePath.expanduser().resolve()
-    resolvedPath.parent.mkdir(parents=True, exist_ok=True)
-    engine = create_async_engine(
-        createAsyncSqliteUrl(resolvedPath),
-        echo=echo,
-    )
+    """按数据库 URL 创建带连接健康检查的长期 AsyncEngine。"""
+    normalizedUrl = normalizeAsyncDatabaseUrl(databaseUrl)
+    backend = normalizedUrl.get_backend_name()
+    engineOptions: dict[str, object] = {
+        "echo": echo,
+        "pool_pre_ping": True,
+    }
+    if backend == "postgresql":
+        engineOptions.update(
+            pool_size=poolSize,
+            max_overflow=maxOverflow,
+            pool_timeout=poolTimeoutSeconds,
+            pool_recycle=poolRecycleSeconds,
+        )
+    else:
+        database = normalizedUrl.database
+        if database and database != ":memory:":
+            Path(database).expanduser().resolve().parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+    engine = create_async_engine(normalizedUrl, **engineOptions)
+    if backend == "sqlite":
+        _enableSqliteForeignKeys(engine)
+    return engine
+
+
+def _enableSqliteForeignKeys(engine: AsyncEngine) -> None:
+    """为每条 SQLite 连接显式启用外键约束。"""
 
     @event.listens_for(engine.sync_engine, "connect")
     def enableForeignKeys(
         databaseConnection: sqlite3.Connection,
         connectionRecord: object,
     ) -> None:
-        """为每条 SQLite 连接显式启用外键约束。"""
         del connectionRecord
         cursor = databaseConnection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
-    return engine
+
+def createAsyncSqliteEngine(
+    databasePath: Path = DATABASE_PATH,
+    *,
+    echo: bool = False,
+) -> AsyncEngine:
+    """兼容现有测试的 SQLite AsyncEngine 创建入口。"""
+    return createAsyncDatabaseEngine(createAsyncSqliteUrl(databasePath), echo=echo)
 
 
 def createAsyncSessionFactory(

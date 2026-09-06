@@ -25,9 +25,11 @@ from src.adapters.database.asyncSqlAlchemyUserUnitOfWork import (
     AsyncSqlAlchemyUserUnitOfWorkFactory,
 )
 from src.adapters.database.connection import (
+    createAsyncDatabaseEngine,
     createAsyncSessionFactory,
     createAsyncSqliteEngine,
     createAsyncSqliteUrl,
+    normalizeAsyncDatabaseUrl,
 )
 from src.adapters.database.conversationMapper import (
     toConversationRecord,
@@ -62,8 +64,10 @@ __all__ = [
     "MessageRecord",
     "UserRecord",
     "createAsyncSessionFactory",
+    "createAsyncDatabaseEngine",
     "createAsyncSqliteEngine",
     "createAsyncSqliteUrl",
+    "normalizeAsyncDatabaseUrl",
     "toDomainConversation",
     "toDomainMessage",
     "toDomainUser",
