@@ -103,6 +103,11 @@ ws://127.0.0.1:8000/ws
 | `invalid_position` | 送达、已读或同步位置无效或越界 |
 | `position_storage_failed` | 累计确认保存失败 |
 | `sync_storage_failed` | 重连补偿查询失败 |
+| `message_too_large` | WebSocket 命令超过配置的 UTF-8 字节上限 |
+| `rate_limited` | 当前连接在滑动时间窗口内输入过于频繁 |
+
+收到 `message_too_large` 或 `rate_limited` 后，服务端会发送错误事件并主动关闭当前
+连接。具体默认值和环境变量参见[质量、可观测性与安全基线](/guide/quality-security)。
 
 一对一会话固定包含两名不同用户，因此不支持自发消息。
 
