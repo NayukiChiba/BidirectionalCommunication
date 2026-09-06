@@ -1,0 +1,43 @@
+# 版本控制、编辑器和本地工具状态
+.git/
+.github/
+.idea/
+.vscode/
+.codex/
+.agents/
+
+# 本地 Python/uv 环境必须在 Linux 镜像内重新创建
+.venv/
+.uv-cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# 密钥和本地环境配置只能在容器运行时注入
+.env
+.env.*
+*.pem
+*.key
+
+# SQLite 文件和运行时数据必须位于外部持久卷
+data/
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# 测试、文档构建产物和其他非运行时上下文
+tests/
+issues/
+plans/
+artifacts/
+outputs/
+docs/
+examples/
+*.log
+.coverage
+htmlcov/

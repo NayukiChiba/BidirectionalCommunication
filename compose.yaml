@@ -1,0 +1,57 @@
+services:
+  migrate:
+    image: bidirectionalcommunication:local
+    command: ["alembic", "upgrade", "head"]
+    volumes:
+      - chat-data:/app/data
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+  app:
+    build:
+      context: .
+      target: runtime
+    image: bidirectionalcommunication:local
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:?请在.env中设置至少32字节的随机密钥}
+      AUTH_ACCESS_TOKEN_EXPIRE_MINUTES: ${AUTH_ACCESS_TOKEN_EXPIRE_MINUTES:-15}
+      WS_MAX_MESSAGE_BYTES: ${WS_MAX_MESSAGE_BYTES:-16384}
+      WS_INPUT_RATE_LIMIT_COUNT: ${WS_INPUT_RATE_LIMIT_COUNT:-30}
+      WS_INPUT_RATE_LIMIT_WINDOW_SECONDS: ${WS_INPUT_RATE_LIMIT_WINDOW_SECONDS:-10}
+      WS_MAX_CONNECTIONS: ${WS_MAX_CONNECTIONS:-1000}
+      READINESS_TIMEOUT_SECONDS: ${READINESS_TIMEOUT_SECONDS:-1}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    volumes:
+      - chat-data:/app/data
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    stop_grace_period: 15s
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2).read()",
+        ]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  chat-data:
