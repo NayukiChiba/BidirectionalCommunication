@@ -1,6 +1,8 @@
 """FastAPI 应用的唯一组合根。"""
 
+import logging
 from contextlib import asynccontextmanager
+from functools import partial
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -9,11 +11,13 @@ from fastapi import FastAPI
 from src.adapters import (
     ConnectionManager,
     WebSocketMessageNotifier,
+    WebSocketRateLimiter,
 )
 from src.adapters.database import (
     AsyncSqlAlchemyConversationUnitOfWorkFactory,
     AsyncSqlAlchemyMessageUnitOfWorkFactory,
     AsyncSqlAlchemyUserUnitOfWorkFactory,
+    DatabaseReadinessProbe,
     createAsyncSessionFactory,
     createAsyncSqliteEngine,
 )
@@ -26,24 +30,39 @@ from src.application import (
     SendMessageService,
     SyncMessagesService,
 )
-from src.config import DATABASE_PATH, AuthSettings
+from src.config import (
+    DATABASE_HEAD_REVISION,
+    DATABASE_PATH,
+    AuthSettings,
+    RuntimeSettings,
+)
 from src.entrypoints import (
     CurrentUserDependency,
+    addRequestContextMiddleware,
     create_router,
     createAuthenticationRouter,
     createConversationRouter,
+    createHealthRouter,
     createHistoryRouter,
 )
+from src.observability import configureStructuredLogging
+
+logger = logging.getLogger(__name__)
 
 
 def create_app(
     *,
     databasePath: Path = DATABASE_PATH,
     authSettings: AuthSettings | None = None,
+    runtimeSettings: RuntimeSettings | None = None,
 ) -> FastAPI:
     """创建并组装可运行的 FastAPI 应用。"""
     resolvedAuthSettings = authSettings or AuthSettings()
-    connection_manager = ConnectionManager()
+    resolvedRuntimeSettings = runtimeSettings or RuntimeSettings()
+    configureStructuredLogging(resolvedRuntimeSettings.logLevel)
+    connection_manager = ConnectionManager(
+        maxConnections=resolvedRuntimeSettings.maxWebSocketConnections
+    )
     database_engine = createAsyncSqliteEngine(databasePath)
     session_factory = createAsyncSessionFactory(database_engine)
     unit_of_work_factory = AsyncSqlAlchemyMessageUnitOfWorkFactory(session_factory)
@@ -80,17 +99,32 @@ def create_app(
         conversation_unit_of_work_factory
     )
     sync_service = SyncMessagesService(position_service, history_service)
+    readiness_probe = DatabaseReadinessProbe(
+        database_engine,
+        expectedRevision=DATABASE_HEAD_REVISION,
+        timeoutSeconds=resolvedRuntimeSettings.readinessTimeoutSeconds,
+    )
+    rate_limiter_factory = partial(
+        WebSocketRateLimiter,
+        limit=resolvedRuntimeSettings.inputRateLimitCount,
+        windowSeconds=resolvedRuntimeSettings.inputRateLimitWindowSeconds,
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         """释放组合根创建的连接资源。"""
         try:
+            logger.info("application_started", extra={"event": "lifecycle"})
             yield
         finally:
+            logger.info("application_stopping", extra={"event": "lifecycle"})
+            connection_manager.stopAccepting()
             await connection_manager.close_all()
             await database_engine.dispose()
+            logger.info("application_stopped", extra={"event": "lifecycle"})
 
     app = FastAPI(lifespan=lifespan)
+    addRequestContextMiddleware(app)
     app.state.connection_manager = connection_manager
     app.state.database_engine = database_engine
     app.state.session_factory = session_factory
@@ -104,6 +138,9 @@ def create_app(
     app.state.conversation_service = conversation_service
     app.state.position_service = position_service
     app.state.sync_service = sync_service
+    app.state.readiness_probe = readiness_probe
+    app.state.runtime_settings = resolvedRuntimeSettings
+    app.include_router(createHealthRouter(readiness_probe))
     app.include_router(
         createAuthenticationRouter(
             authentication_service,
@@ -123,6 +160,8 @@ def create_app(
             authenticationService=authentication_service,
             positionService=position_service,
             syncService=sync_service,
+            rateLimiterFactory=rate_limiter_factory,
+            maxMessageBytes=resolvedRuntimeSettings.maxWebSocketMessageBytes,
         )
     )
     app.include_router(
