@@ -60,7 +60,7 @@ class CreateConversationService:
         firstMemberId: UserId,
         secondMemberId: UserId,
     ) -> Conversation | None:
-        """用独立只读事务查询成员组合，避免 SQLite 读事务升级写锁。"""
+        """用独立只读事务查询成员组合，缩短随后写事务的持锁时间。"""
         async with self._conversationUnitOfWorkFactory() as unitOfWork:
             return await unitOfWork.conversations.getByMembers(
                 firstMemberId,
