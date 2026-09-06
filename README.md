@@ -9,7 +9,7 @@ uv sync --dev
 Copy-Item .env.example .env
 # 编辑 .env，设置随机 AUTH_SECRET_KEY
 uv run alembic upgrade head
-uv run uvicorn main:app --reload
+uv run uvicorn main:app --reload --ws-max-size 16384
 ```
 
 `main.py` 是唯一程序启动入口，FastAPI 应用由 `bootstrap.create_app()` 完成组装。
@@ -41,6 +41,7 @@ npm run dev
 - 用户认证、消息可靠性和自动化测试。
 - 一对一会话聚合、成员授权和并发唯一性。
 - 累计送达/已读位置与 WebSocket 重连补偿。
+- WebSocket 资源限制、结构化日志、存活/就绪检查和优雅关闭。
 
 ## 第一版目标
 
