@@ -1,9 +1,10 @@
 """用户注册、登录和 HTTP Bearer 身份入口。"""
 
+import logging
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -21,7 +22,9 @@ from src.application import (
     UserStorageError,
 )
 
-oauth2Scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
+logger = logging.getLogger(__name__)
+
+oauth2Scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
 
 
 class RegisterUserPayload(BaseModel):
@@ -59,18 +62,41 @@ class CurrentUserDependency:
 
     async def __call__(
         self,
-        token: Annotated[str, Depends(oauth2Scheme)],
+        request: Request,
+        token: Annotated[str | None, Depends(oauth2Scheme)],
     ) -> UserIdentity:
         """验证令牌并返回数据库中仍然存在的可信用户。"""
+        if token is None:
+            self._logRejection(request)
+            raise createCredentialsError()
         try:
             return await self._authenticationService.authenticateAccessToken(token)
         except InvalidAccessToken as error:
+            self._logRejection(request)
             raise createCredentialsError() from error
         except UserStorageError as error:
+            logger.error(
+                "http_authentication_storage_failed",
+                extra={
+                    "event": "authentication_storage_failed",
+                    "request_id": request.state.requestId,
+                },
+            )
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="身份存储暂时不可用",
             ) from error
+
+    @staticmethod
+    def _logRejection(request: Request) -> None:
+        """记录不包含凭证内容的统一认证拒绝事件。"""
+        logger.warning(
+            "http_authentication_rejected",
+            extra={
+                "event": "authentication_rejected",
+                "request_id": request.state.requestId,
+            },
+        )
 
 
 def createCredentialsError() -> HTTPException:

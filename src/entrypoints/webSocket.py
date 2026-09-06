@@ -1,7 +1,9 @@
 """FastAPI WebSocket 输入入口。"""
 
+import logging
+from collections.abc import Callable
 from typing import Annotated, Any, Literal, Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.security.utils import get_authorization_scheme_param
@@ -33,12 +35,19 @@ from src.application import (
     UserStorageError,
 )
 
+logger = logging.getLogger(__name__)
+
+MESSAGE_TOO_LARGE_CODE = 4409
+MESSAGE_TOO_LARGE_REASON = "消息超过大小限制"
+RATE_LIMIT_CODE = 4408
+RATE_LIMIT_REASON = "消息输入频率过高"
+
 
 class WebSocketConnectionGateway(Protocol):
     """WebSocket 入口需要的最小连接管理能力。"""
 
-    async def connect(self, user_id: str, websocket: WebSocket) -> None:
-        """接受并登记用户连接。"""
+    async def connect(self, user_id: str, websocket: WebSocket) -> bool:
+        """在容量允许时接受并登记用户连接。"""
         ...
 
     def disconnect(self, user_id: str, websocket: WebSocket) -> bool:
@@ -47,12 +56,18 @@ class WebSocketConnectionGateway(Protocol):
 
     async def send_message_to_user(
         self,
-        sender_id: str | None = None,
-        *,
-        user_id: str | None = None,
+        sender_id: str,
         data: dict[str, object],
     ) -> bool:
         """向用户当前连接发送协议数据。"""
+        ...
+
+
+class InputRateLimiter(Protocol):
+    """单连接输入限流器的最小能力。"""
+
+    def tryAcquire(self) -> bool:
+        """返回当前命令是否允许处理。"""
         ...
 
 
@@ -135,31 +150,65 @@ def create_router(
     authenticationService: AuthenticationService,
     positionService: AdvanceConversationPositionService,
     syncService: SyncMessagesService,
+    rateLimiterFactory: Callable[[], InputRateLimiter],
+    maxMessageBytes: int,
 ) -> APIRouter:
     """创建已经注入应用服务和连接网关的 FastAPI 路由。"""
     router = APIRouter()
 
-    @router.get("/health")
-    async def get_health() -> dict[str, str]:
-        """返回服务健康状态。"""
-        return {"status": "ok"}
-
     @router.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:
         """认证连接并分派发送、累计确认和重连同步命令。"""
+        connectionId = str(uuid4())
         authorization = websocket.headers.get("authorization")
         scheme, token = get_authorization_scheme_param(authorization)
         if scheme.lower() != "bearer" or not token:
-            await websocket.close(code=4401, reason="缺少身份凭证")
+            logger.warning(
+                "websocket_authentication_rejected",
+                extra={
+                    "event": "authentication_rejected",
+                    "connection_id": connectionId,
+                },
+            )
+            await websocket.close(code=4401, reason="无法验证身份凭证")
             return
         try:
             currentUser = await authenticationService.authenticateAccessToken(token)
         except (InvalidAccessToken, UserStorageError):
-            await websocket.close(code=4401, reason="身份凭证无效")
+            logger.warning(
+                "websocket_authentication_rejected",
+                extra={
+                    "event": "authentication_rejected",
+                    "connection_id": connectionId,
+                },
+            )
+            await websocket.close(code=4401, reason="无法验证身份凭证")
             return
 
         userId = str(currentUser.user_id)
-        await connection_gateway.connect(user_id=userId, websocket=websocket)
+        connected = await connection_gateway.connect(
+            user_id=userId,
+            websocket=websocket,
+        )
+        if not connected:
+            logger.warning(
+                "websocket_connection_rejected",
+                extra={
+                    "event": "connection_rejected",
+                    "connection_id": connectionId,
+                    "user_id": userId,
+                },
+            )
+            return
+        rateLimiter = rateLimiterFactory()
+        logger.info(
+            "websocket_connected",
+            extra={
+                "event": "websocket_connected",
+                "connection_id": connectionId,
+                "user_id": userId,
+            },
+        )
 
         async def sendToCurrent(data: dict[str, object]) -> None:
             """把当前命令的响应发送到仍有效的当前用户连接。"""
@@ -171,6 +220,48 @@ def create_router(
         try:
             while True:
                 rawMessage = await websocket.receive_text()
+                if len(rawMessage.encode("utf-8")) > maxMessageBytes:
+                    logger.warning(
+                        "websocket_message_too_large",
+                        extra={
+                            "event": "message_rejected",
+                            "connection_id": connectionId,
+                            "user_id": userId,
+                            "status": "message_too_large",
+                        },
+                    )
+                    await sendToCurrent(
+                        ErrorEvent(
+                            code="message_too_large",
+                            message="消息超过大小限制",
+                        ).model_dump(mode="json")
+                    )
+                    await websocket.close(
+                        code=MESSAGE_TOO_LARGE_CODE,
+                        reason=MESSAGE_TOO_LARGE_REASON,
+                    )
+                    return
+                if not rateLimiter.tryAcquire():
+                    logger.warning(
+                        "websocket_rate_limited",
+                        extra={
+                            "event": "message_rejected",
+                            "connection_id": connectionId,
+                            "user_id": userId,
+                            "status": "rate_limited",
+                        },
+                    )
+                    await sendToCurrent(
+                        ErrorEvent(
+                            code="rate_limited",
+                            message="消息输入频率过高",
+                        ).model_dump(mode="json")
+                    )
+                    await websocket.close(
+                        code=RATE_LIMIT_CODE,
+                        reason=RATE_LIMIT_REASON,
+                    )
+                    return
                 try:
                     payload = CLIENT_PAYLOAD_ADAPTER.validate_json(rawMessage)
                 except ValidationError as validationError:
@@ -185,6 +276,15 @@ def create_router(
                             code=errorCode,
                             message="消息格式验证失败",
                         ).model_dump(mode="json")
+                    )
+                    logger.warning(
+                        "websocket_protocol_rejected",
+                        extra={
+                            "event": "message_rejected",
+                            "connection_id": connectionId,
+                            "user_id": userId,
+                            "status": errorCode,
+                        },
                     )
                     continue
 
@@ -211,6 +311,20 @@ def create_router(
                                 "push_status": result.push_outcome.value,
                             }
                         )
+                        logger.info(
+                            "message_accepted",
+                            extra={
+                                "event": "message_accepted",
+                                "connection_id": connectionId,
+                                "user_id": userId,
+                                "conversation_id": str(result.message.conversation_id),
+                                "client_message_id": str(
+                                    result.message.client_message_id
+                                ),
+                                "server_message_id": str(result.message.message_id),
+                                "status": result.push_outcome.value,
+                            },
+                        )
                         continue
 
                     errorByStatus = {
@@ -228,6 +342,23 @@ def create_router(
                         ),
                     }
                     errorCode, errorMessage = errorByStatus[result.status]
+                    logLevel = (
+                        logging.WARNING
+                        if result.status is SendMessageStatus.CONVERSATION_UNAVAILABLE
+                        else logging.ERROR
+                    )
+                    logger.log(
+                        logLevel,
+                        "message_command_rejected",
+                        extra={
+                            "event": "authorization_rejected",
+                            "connection_id": connectionId,
+                            "user_id": userId,
+                            "conversation_id": str(payload.conversation_id),
+                            "client_message_id": str(payload.client_message_id),
+                            "status": errorCode,
+                        },
+                    )
                     await sendToCurrent(
                         ErrorEvent(
                             code=errorCode,
@@ -315,8 +446,26 @@ def create_router(
                     )
                 )
         except WebSocketDisconnect:
-            connection_gateway.disconnect(user_id=userId, websocket=websocket)
+            pass
+        except Exception:
+            logger.exception(
+                "websocket_handler_failed",
+                extra={
+                    "event": "websocket_failed",
+                    "connection_id": connectionId,
+                    "user_id": userId,
+                },
+            )
+            raise
         finally:
             connection_gateway.disconnect(user_id=userId, websocket=websocket)
+            logger.info(
+                "websocket_disconnected",
+                extra={
+                    "event": "websocket_disconnected",
+                    "connection_id": connectionId,
+                    "user_id": userId,
+                },
+            )
 
     return router
