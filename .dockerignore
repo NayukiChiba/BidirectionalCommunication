@@ -36,6 +36,8 @@ issues/
 plans/
 artifacts/
 outputs/
+backups/
+*.dump
 docs/
 examples/
 *.log

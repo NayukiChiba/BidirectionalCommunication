@@ -1,9 +1,34 @@
 services:
+  postgres:
+    image: postgres:18.6-bookworm@sha256:1c59e2c3c818eaa0f0628f695b36e7c9e362d6b219b36a54a32df645cbd7e1af
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-chat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在.env中设置PostgreSQL密码}
+      POSTGRES_DB: ${POSTGRES_DB:-chat}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-chat} -d ${POSTGRES_DB:-chat}",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    stop_grace_period: 30s
+
   migrate:
     image: bidirectionalcommunication:local
     command: ["alembic", "upgrade", "head"]
-    volumes:
-      - chat-data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-chat}:${POSTGRES_PASSWORD:?请在.env中设置PostgreSQL密码}@postgres:5432/${POSTGRES_DB:-chat}
     restart: "no"
     read_only: true
     tmpfs:
@@ -21,6 +46,11 @@ services:
         condition: service_completed_successfully
     environment:
       AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:?请在.env中设置至少32字节的随机密钥}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-chat}:${POSTGRES_PASSWORD:?请在.env中设置PostgreSQL密码}@postgres:5432/${POSTGRES_DB:-chat}
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}
+      DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}
+      DATABASE_POOL_TIMEOUT_SECONDS: ${DATABASE_POOL_TIMEOUT_SECONDS:-30}
+      DATABASE_POOL_RECYCLE_SECONDS: ${DATABASE_POOL_RECYCLE_SECONDS:-1800}
       AUTH_ACCESS_TOKEN_EXPIRE_MINUTES: ${AUTH_ACCESS_TOKEN_EXPIRE_MINUTES:-15}
       WS_MAX_MESSAGE_BYTES: ${WS_MAX_MESSAGE_BYTES:-16384}
       WS_INPUT_RATE_LIMIT_COUNT: ${WS_INPUT_RATE_LIMIT_COUNT:-30}
@@ -30,8 +60,6 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "${APP_PORT:-8000}:8000"
-    volumes:
-      - chat-data:/app/data
     init: true
     read_only: true
     tmpfs:
@@ -54,4 +82,4 @@ services:
       retries: 3
 
 volumes:
-  chat-data:
+  postgres-data:

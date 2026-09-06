@@ -53,5 +53,5 @@ STOPSIGNAL SIGTERM
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=2).read()"]
 
-# 保持单进程：在线连接表和 SQLite 写入边界都只承诺单实例运行。
+# 保持单进程：在线连接表仍然只存在于当前 Python 进程。
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--ws-max-size", "16384"]
