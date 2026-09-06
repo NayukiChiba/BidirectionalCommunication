@@ -41,6 +41,7 @@ from src.adapters.database.models import (
     MessageRecord,
     UserRecord,
 )
+from src.adapters.database.readinessProbe import DatabaseReadinessProbe
 from src.adapters.database.userMapper import toDomainUser, toUserRecord
 
 __all__ = [
@@ -57,6 +58,7 @@ __all__ = [
     "ConversationMemberRecord",
     "ConversationRecord",
     "DatabaseBase",
+    "DatabaseReadinessProbe",
     "MessageRecord",
     "UserRecord",
     "createAsyncSessionFactory",
