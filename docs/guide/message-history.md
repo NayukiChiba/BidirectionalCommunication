@@ -87,7 +87,7 @@ conversation_id = :conversation_id
     ↓
 尝试 WebSocket 推送
     ├── 在线：立即收到
-    └── 离线或失败：消息仍在 SQLite
+    └── 离线或失败：消息仍在持久化数据库
                          ↓
                  客户端重新连接
                          ↓

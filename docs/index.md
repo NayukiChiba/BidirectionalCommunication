@@ -34,6 +34,8 @@ features:
 HTTP 与 WebSocket 已使用同一短期 Bearer JWT 建立可信用户身份。
 一对一会话现在具有稳定身份和数据库成员约束，只有会话成员可以发送或读取消息。
 累计送达与已读位置只会向前推进，客户端可在 WebSocket 重连后幂等补齐缺失消息。
+vNext 已加入可配置 PostgreSQL 后端、连接池和真实跨方言迁移/并发测试；SQLite 仍保留
+为轻量本地测试后端。
 
 ## 文档导航
 
@@ -48,6 +50,7 @@ HTTP 与 WebSocket 已使用同一短期 Bearer JWT 建立可信用户身份。
 - [送达、已读与重连补偿](/guide/delivery-read-reconnect)：累计位置、确认语义和客户端同步循环。
 - [质量、可观测性与安全基线](/guide/quality-security)：测试层级、资源限制、日志和健康检查。
 - [Docker 单实例部署](/guide/container-deployment)：镜像构建、显式迁移、持久卷和冒烟测试。
+- [PostgreSQL 迁移与事务边界](/guide/postgresql)：驱动、连接池、跨方言测试、备份和回滚。
 - [Alembic 数据库迁移](/guide/database-migrations)：版本历史、升级降级和开发部署流程。
 - [Repository 与 Unit of Work](/guide/repository-unit-of-work)：持久化端口、事务边界和失败恢复。
 - [消息领域模型](/domain/message-model)：领域概念、不变量和传输转换边界。

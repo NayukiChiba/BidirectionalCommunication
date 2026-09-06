@@ -1,13 +1,13 @@
 # 异步 SQLAlchemy
 
-应用运行时数据库访问已经迁移为 `AsyncEngine`、`AsyncSession` 和 `aiosqlite`。业务
-行为、Repository 语义和 Unit of Work 事务边界保持不变，变化的是等待数据库 I/O 时
-可以把事件循环执行权交给其他 HTTP 或 WebSocket Task。
+应用运行时数据库访问使用 `AsyncEngine` 和 `AsyncSession`。SQLite 使用 `aiosqlite`，
+PostgreSQL 使用 `asyncpg`。业务行为、Repository 语义和 Unit of Work 事务边界保持
+不变，等待数据库 I/O 时可以把事件循环执行权交给其他 HTTP 或 WebSocket Task。
 
 ## 运行时组件
 
 ```text
-sqlite+aiosqlite URL
+sqlite+aiosqlite 或 postgresql+asyncpg URL
         ↓
 AsyncEngine
         ↓
@@ -20,7 +20,7 @@ AsyncSession
 AsyncRepository
 ```
 
-- `createAsyncSqliteEngine()` 创建应用长期复用的 AsyncEngine。
+- `createAsyncDatabaseEngine()` 按配置创建应用长期复用的 AsyncEngine。
 - `createAsyncSessionFactory()` 创建轻量工厂，并设置 `expire_on_commit=False`。
 - `AsyncSqlAlchemyMessageUnitOfWorkFactory` 每次调用返回新的 UoW。
 - UoW 在 `__aenter__()` 中创建 AsyncSession，在 `__aexit__()` 中回滚剩余事务并关闭。
@@ -81,9 +81,9 @@ Repository 不负责提交事务。
 
 ## Alembic 为什么仍然同步
 
-Alembic 是应用启动前运行的短生命周期运维命令，不处理并发 WebSocket 请求。它继续
-使用 `sqlite+pysqlite` 同步连接，可以保持迁移环境简单、稳定；应用运行时使用独立的
-`sqlite+aiosqlite` URL。两者操作同一个 SQLite 文件和同一组表结构。
+Alembic 是应用启动前运行的短生命周期运维命令，不处理并发 WebSocket 请求。SQLite
+迁移使用 `sqlite+pysqlite`，PostgreSQL 迁移使用同步 Psycopg；应用运行时分别使用
+`aiosqlite` 和 `asyncpg`。同步迁移连接不会进入请求处理链路。
 
 因此“所有运行时数据库路径异步”不等于“禁止任何同步数据库工具”。迁移测试和
 `EXPLAIN QUERY PLAN` 结构检查也属于运维/测试边界，不进入 Application 请求链路。
@@ -98,3 +98,6 @@ aiosqlite 让等待 SQLite 操作时不阻塞事件循环，但 SQLite 的锁和
 - 多实例和高写入吞吐仍需要评估 PostgreSQL 等客户端/服务器数据库。
 
 异步迁移解决的是 Python 服务等待 I/O 的方式，不是数据库存储引擎的并发上限。
+
+PostgreSQL 使用 asyncpg、有界连接池和连接复用前健康检查；其事务隔离与跨方言测试参见
+[PostgreSQL 迁移与事务边界](/guide/postgresql)。

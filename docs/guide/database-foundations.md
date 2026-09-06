@@ -1,7 +1,8 @@
 # 关系建模与 SQLAlchemy
 
-异步 SQLAlchemy 基础设施已经通过 Repository 与 Unit of Work 接入发送消息用例。
-Application 只依赖自有端口，不知道 SQLite、Session 或 ORM 类型。
+异步 SQLAlchemy 基础设施已经通过 Repository 与 Unit of Work 接入发送消息用例，
+当前支持 SQLite 和 PostgreSQL。Application 只依赖自有端口，不知道方言、Session
+或 ORM 类型。
 
 ## 最小消息表
 
@@ -56,8 +57,8 @@ UTC 创建时间。数据库没有明文密码字段；`conversation_members.use
 
 ## 代码位置
 
-- `src/config.py`：统一生成项目根目录、数据目录和 SQLite 文件路径。
-- `src/adapters/database/connection.py`：创建 AsyncEngine 和 AsyncSession 工厂。
+- `src/config.py`：统一管理 SQLite 路径、DATABASE_URL 和连接池配置。
+- `src/adapters/database/connection.py`：按 URL 创建 AsyncEngine 和 AsyncSession 工厂。
 - `src/adapters/database/models.py`：声明消息、会话、成员和用户 ORM 持久化模型。
 - `src/adapters/database/conversationMapper.py`：转换 Conversation 聚合与 ORM 记录。
 - `src/adapters/database/userMapper.py`：转换用户领域实体与用户 ORM 记录。
@@ -100,8 +101,7 @@ AsyncSession 工厂设置 `expire_on_commit=False`，防止提交后属性访问
 uv run python -m examples.sqlAlchemyExperiment
 ```
 
-默认数据库文件为 `data/chat.sqlite3`，路径由 `src/config.py` 统一生成。也可以指定临时
-路径：
+未配置 `DATABASE_URL` 时，本地数据库文件为 `data/chat.sqlite3`。也可以指定临时路径：
 
 ```bash
 uv run python -m examples.sqlAlchemyExperiment \

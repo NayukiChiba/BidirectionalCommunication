@@ -16,9 +16,11 @@ Copy-Item .env.example .env
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-将生成的随机值写入 `.env` 的 `AUTH_SECRET_KEY`，然后升级数据库：
+将生成的随机值分别写入 `.env` 的 `AUTH_SECRET_KEY` 和 `POSTGRES_PASSWORD`，同步修改
+`DATABASE_URL` 中的密码，然后启动开发 PostgreSQL 并升级数据库：
 
 ```bash
+docker compose up -d postgres --wait
 uv run alembic upgrade head
 ```
 
@@ -38,9 +40,12 @@ uv run uvicorn main:app --reload
 
 ```json
 {
-  "status": "ok"
+  "status": "alive"
 }
 ```
+
+如果只想运行轻量 SQLite 本地实验，可以从 `.env` 删除 `DATABASE_URL`；应用会回退到
+`data/chat.sqlite3`。PostgreSQL 是 Compose 和跨数据库集成测试的主开发后端。
 
 ## 运行质量检查
 

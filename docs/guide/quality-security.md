@@ -10,7 +10,7 @@
 - 领域单元测试保护值对象、聚合和累计位置不变量。
 - 应用单元测试通过假端口验证用例编排和失败路径。
 - 适配器测试保护连接、限流、转换和共同端口契约。
-- 数据库集成测试运行真实 SQLite、迁移、约束和并发事务。
+- 数据库集成测试运行真实 SQLite 和 PostgreSQL，验证迁移、约束和并发事务。
 - 根目录接口测试通过 TestClient 覆盖完整 HTTP/WebSocket 用户故事。
 
 并发连接、并发消息幂等、并发位置推进和重连补偿都有自动化测试。时间相关测试通过
@@ -24,6 +24,9 @@
 ```dotenv
 AUTH_SECRET_KEY=<至少32字节随机值>
 AUTH_ACCESS_TOKEN_EXPIRE_MINUTES=15
+DATABASE_URL=postgresql+asyncpg://chat:<password>@127.0.0.1:5432/chat
+DATABASE_POOL_SIZE=5
+DATABASE_MAX_OVERFLOW=10
 WS_MAX_MESSAGE_BYTES=16384
 WS_INPUT_RATE_LIMIT_COUNT=30
 WS_INPUT_RATE_LIMIT_WINDOW_SECONDS=10

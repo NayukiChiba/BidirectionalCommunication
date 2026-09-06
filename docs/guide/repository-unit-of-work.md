@@ -1,6 +1,6 @@
 # 消息 Repository 与 Unit of Work
 
-发送消息用例现在通过 Repository 和 Unit of Work 使用 SQLite 持久化，同时保持
+发送消息用例通过 Repository 和 Unit of Work 使用 SQLAlchemy 持久化，同时保持
 Application 和 Domain 不依赖 SQLAlchemy。
 
 ## 两个抽象分别解决什么问题
@@ -119,4 +119,5 @@ UnitOfWork.commit
 - 共同契约测试对内存和 SQLAlchemy 两种实现执行相同的提交与回滚断言。
 - SQLAlchemy 集成测试验证唯一约束导致的提交失败会被转换，失败 AsyncSession 被释放，
   后续新 UoW 仍可正常提交。
-- WebSocket 外部行为测试为每个测试创建独立 SQLite 文件，验证真实组合链路。
+- WebSocket 外部行为测试使用独立 SQLite 文件快速验证完整链路；PostgreSQL 集成测试
+  对同一 Repository、迁移和并发约束执行跨方言验收。

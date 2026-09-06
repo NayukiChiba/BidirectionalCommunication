@@ -129,6 +129,18 @@ uv run alembic \
 
 路径通过 `pathlib` 和 SQLAlchemy `URL.create()` 处理，不依赖字符串拼接。
 
+PostgreSQL 测试和部署通过完整 URL 指向独立数据库：
+
+```bash
+uv run alembic \
+  -x database_url=postgresql+asyncpg://chat:<password>@localhost:5432/chat \
+  upgrade head
+```
+
+Alembic 会把异步运行时 URL 转换为同步 Psycopg URL。SQLite 才启用 batch 表重建，
+PostgreSQL 使用原生事务 DDL 和 ALTER TABLE。跨方言验收与恢复流程参见
+[PostgreSQL 迁移与事务边界](/guide/postgresql)。
+
 ## SQLite WAL 决策
 
 当前没有启用 WAL，也没有执行 `PRAGMA journal_mode=WAL`。现阶段是单进程学习项目，

@@ -53,7 +53,7 @@ app = create_app()
 
 ```text
 ConnectionManager
-SQLite AsyncEngine / AsyncSession Factory
+Configured AsyncEngine / AsyncSession Factory
 AsyncSqlAlchemyMessageUnitOfWorkFactory
 AsyncSqlAlchemyConversationUnitOfWorkFactory
 AsyncSqlAlchemyUserUnitOfWorkFactory
