@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from src.config import AuthSettings, RuntimeSettings
+from src.config import AuthSettings, DatabaseSettings, RuntimeSettings
 
 
 def test_auth_settings_requires_environment_secret(
@@ -82,3 +82,33 @@ def test_runtime_settings_reject_invalid_security_limits(
     """危险或不受支持的运行配置应在启动前快速失败。"""
     with pytest.raises(ValidationError):
         RuntimeSettings(**{fieldName: value}, _env_file=None)
+
+
+def test_database_settings_hide_url_and_validate_pool_limits() -> None:
+    """含密码的数据库 URL 不得出现在配置展示中。"""
+    databaseUrl = "postgresql+asyncpg://chat:secret-password@db:5432/chat"
+    settings = DatabaseSettings(
+        databaseUrl=databaseUrl,
+        poolSize=8,
+        maxOverflow=12,
+        _env_file=None,
+    )
+
+    assert settings.databaseUrl.get_secret_value() == databaseUrl
+    assert databaseUrl not in repr(settings)
+    assert settings.poolSize == 8
+    assert settings.maxOverflow == 12
+    with pytest.raises(ValidationError):
+        DatabaseSettings(poolSize=0, _env_file=None)
+
+
+def test_database_settings_read_environment_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DATABASE_URL 应成为运行时切换数据库的唯一入口。"""
+    databaseUrl = "postgresql+asyncpg://chat:test@localhost:5432/chat"
+    monkeypatch.setenv("DATABASE_URL", databaseUrl)
+
+    settings = DatabaseSettings(_env_file=None)
+
+    assert settings.databaseUrl.get_secret_value() == databaseUrl

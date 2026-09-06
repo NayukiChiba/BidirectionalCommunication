@@ -92,6 +92,15 @@ def test_application_does_not_depend_on_outer_layers_or_frameworks() -> None:
     )
 
 
+def test_domain_and_application_do_not_branch_on_database_dialect() -> None:
+    """数据库切换只能发生在基础设施层，业务层不得识别方言。"""
+    for packageName in ("domain", "application"):
+        for filepath in python_files(packageName):
+            source = filepath.read_text(encoding="utf-8").casefold()
+            assert "sqlite" not in source, filepath.relative_to(PROJECT_ROOT)
+            assert "postgresql" not in source, filepath.relative_to(PROJECT_ROOT)
+
+
 def test_adapters_do_not_depend_on_entrypoints_or_startup_modules() -> None:
     """技术适配器不能反向依赖请求入口和启动模块。"""
     assert_packages_not_imported(

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import pytest
 from alembic import command
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -13,7 +14,7 @@ from src.adapters.database.migrationConfig import (
     createMigrationConfig,
     createMigrationEngine,
 )
-from src.config import AuthSettings, RuntimeSettings
+from src.config import AuthSettings, DatabaseSettings, RuntimeSettings
 
 TEST_AUTH_SECRET = "test-auth-secret-" + ("x" * 64)
 
@@ -112,3 +113,25 @@ def test_lifespan_stops_admission_before_releasing_resources(tmp_path: Path) -> 
 
     assert manager.acceptingConnections is False
     assert manager.connectionCount == 0
+
+
+@pytest.mark.asyncio
+async def test_database_url_switches_bootstrap_to_postgresql() -> None:
+    """组合根应按配置切换数据库，不改变应用服务和领域对象。"""
+    app = create_app(
+        authSettings=createTestAuthSettings(),
+        databaseSettings=DatabaseSettings(
+            databaseUrl="postgresql://chat:secret@localhost:5432/chat",
+            poolSize=4,
+            maxOverflow=3,
+            _env_file=None,
+        ),
+        runtimeSettings=RuntimeSettings(_env_file=None),
+    )
+    try:
+        assert app.state.database_engine.url.drivername == "postgresql+asyncpg"
+        assert app.state.database_engine.pool.size() == 4
+        assert app.state.database_engine.pool._max_overflow == 3
+        assert app.state.send_message_service is not None
+    finally:
+        await app.state.database_engine.dispose()

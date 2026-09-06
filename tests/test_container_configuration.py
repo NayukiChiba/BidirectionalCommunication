@@ -32,13 +32,17 @@ def test_dockerignore_excludes_local_environment_secrets_and_databases() -> None
     assert "uv.lock" not in ignored
 
 
-def test_compose_separates_migration_from_application_and_mounts_data_volume() -> None:
-    """迁移应是独立服务，应用与迁移必须共享唯一 SQLite 卷。"""
+def test_compose_separates_postgres_migration_and_application() -> None:
+    """PostgreSQL、一次性迁移与应用必须具有明确启动依赖。"""
     compose = (PROJECT_ROOT / "compose.yaml").read_text(encoding="utf-8")
 
+    assert "  postgres:" in compose
+    assert "image: postgres:18.6-bookworm" in compose
     assert "  migrate:" in compose
     assert 'command: ["alembic", "upgrade", "head"]' in compose
+    assert "condition: service_healthy" in compose
     assert "condition: service_completed_successfully" in compose
-    assert compose.count("- chat-data:/app/data") == 2
+    assert "- postgres-data:/var/lib/postgresql" in compose
+    assert compose.count("DATABASE_URL: postgresql+asyncpg://") == 2
     assert "read_only: true" in compose
     assert "no-new-privileges:true" in compose
