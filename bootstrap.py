@@ -18,8 +18,9 @@ from src.adapters.database import (
     AsyncSqlAlchemyMessageUnitOfWorkFactory,
     AsyncSqlAlchemyUserUnitOfWorkFactory,
     DatabaseReadinessProbe,
+    createAsyncDatabaseEngine,
     createAsyncSessionFactory,
-    createAsyncSqliteEngine,
+    createAsyncSqliteUrl,
 )
 from src.adapters.security import JwtAccessTokenProvider, PwdlibPasswordHasher
 from src.application import (
@@ -32,8 +33,8 @@ from src.application import (
 )
 from src.config import (
     DATABASE_HEAD_REVISION,
-    DATABASE_PATH,
     AuthSettings,
+    DatabaseSettings,
     RuntimeSettings,
 )
 from src.entrypoints import (
@@ -52,18 +53,31 @@ logger = logging.getLogger(__name__)
 
 def create_app(
     *,
-    databasePath: Path = DATABASE_PATH,
+    databasePath: Path | None = None,
     authSettings: AuthSettings | None = None,
+    databaseSettings: DatabaseSettings | None = None,
     runtimeSettings: RuntimeSettings | None = None,
 ) -> FastAPI:
     """创建并组装可运行的 FastAPI 应用。"""
     resolvedAuthSettings = authSettings or AuthSettings()
+    resolvedDatabaseSettings = databaseSettings or DatabaseSettings()
     resolvedRuntimeSettings = runtimeSettings or RuntimeSettings()
     configureStructuredLogging(resolvedRuntimeSettings.logLevel)
     connection_manager = ConnectionManager(
         maxConnections=resolvedRuntimeSettings.maxWebSocketConnections
     )
-    database_engine = createAsyncSqliteEngine(databasePath)
+    databaseUrl = (
+        createAsyncSqliteUrl(databasePath)
+        if databasePath is not None
+        else resolvedDatabaseSettings.databaseUrl.get_secret_value()
+    )
+    database_engine = createAsyncDatabaseEngine(
+        databaseUrl,
+        poolSize=resolvedDatabaseSettings.poolSize,
+        maxOverflow=resolvedDatabaseSettings.maxOverflow,
+        poolTimeoutSeconds=resolvedDatabaseSettings.poolTimeoutSeconds,
+        poolRecycleSeconds=resolvedDatabaseSettings.poolRecycleSeconds,
+    )
     session_factory = createAsyncSessionFactory(database_engine)
     unit_of_work_factory = AsyncSqlAlchemyMessageUnitOfWorkFactory(session_factory)
     conversation_unit_of_work_factory = AsyncSqlAlchemyConversationUnitOfWorkFactory(
@@ -127,6 +141,7 @@ def create_app(
     addRequestContextMiddleware(app)
     app.state.connection_manager = connection_manager
     app.state.database_engine = database_engine
+    app.state.database_settings = resolvedDatabaseSettings
     app.state.session_factory = session_factory
     app.state.unit_of_work_factory = unit_of_work_factory
     app.state.user_unit_of_work_factory = user_unit_of_work_factory
