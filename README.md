@@ -7,7 +7,8 @@
 ```bash
 uv sync --dev
 Copy-Item .env.example .env
-# 编辑 .env，设置随机 AUTH_SECRET_KEY
+# 编辑 .env，设置随机密钥，并同步 DATABASE_URL 中的 PostgreSQL 密码
+docker compose up -d postgres --wait
 uv run alembic upgrade head
 uv run uvicorn main:app --reload --ws-max-size 16384
 ```
@@ -32,7 +33,8 @@ npm run dev
 
 ## Docker 启动
 
-准备 `.env` 并设置至少 32 字节的 `AUTH_SECRET_KEY`，然后执行：
+准备 `.env`，设置 `AUTH_SECRET_KEY`、`POSTGRES_PASSWORD` 并同步 `DATABASE_URL` 中的
+密码，然后执行：
 
 ```bash
 docker compose build
@@ -40,8 +42,8 @@ docker compose run --rm migrate
 docker compose up -d --no-deps app
 ```
 
-Compose 使用 `chat-data` 命名卷保存 `/app/data/chat.sqlite3`。迁移由独立一次性容器
-执行，应用容器使用非 root 用户和只读根文件系统运行。验证 HTTP 与 WebSocket：
+Compose 使用 `postgres-data` 命名卷保存 PostgreSQL 数据。迁移由独立一次性容器执行，
+应用容器使用非 root 用户和只读根文件系统运行。验证 HTTP 与 WebSocket：
 
 ```bash
 curl http://127.0.0.1:8000/health/ready
@@ -118,12 +120,12 @@ main → bootstrap → entrypoints / adapters → application → domain
 
 ## 当前限制
 
-- 只支持单进程在线连接和单文件 SQLite 消息存储。
+- Compose 使用 PostgreSQL 18；不设置 `DATABASE_URL` 时仍可使用本地 SQLite 后端。
 - 已支持短期 Bearer JWT 身份认证和一对一会话成员授权。
-- 进程退出后在线状态会丢失，消息会保存在 `data/chat.sqlite3`。
-- 应用运行时使用 AsyncSession 和 aiosqlite；Alembic 运维命令仍使用同步连接。
+- 进程退出后在线状态会丢失，消息保存在配置的 PostgreSQL 或 SQLite 数据库。
+- PostgreSQL 运行时使用 asyncpg，Alembic 使用同步 Psycopg；SQLite 保留 aiosqlite。
 - 应用不会自动迁移数据库，部署或拉取新版本后需要执行 `alembic upgrade head`。
 - 离线消息由客户端在 WebSocket 重连后主动提交位置并分批同步。
 - 送达和已读位置按用户累计保存，尚不区分同一用户的多个设备。
 - `accepted` 只表示服务端已持久化，`pushed` 也不表示用户已经阅读。
-- 尚未实现跨实例通信。
+- PostgreSQL 已解决 SQLite 单写者限制，但尚未实现跨实例 WebSocket 路由。
