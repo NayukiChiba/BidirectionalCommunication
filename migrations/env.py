@@ -13,9 +13,12 @@ from alembic import context
 from sqlalchemy import create_engine, pool
 from sqlalchemy.engine import URL, make_url
 
-from src.adapters.database.migrationConfig import createMigrationSqliteUrl
+from src.adapters.database.migrationConfig import (
+    createMigrationDatabaseUrl,
+    createMigrationSqliteUrl,
+)
 from src.adapters.database.models import DatabaseBase
-from src.config import DATABASE_PATH
+from src.config import DatabaseSettings
 
 # context.config 是 Alembic 根据 alembic.ini 和 pyproject.toml 创建的配置对象。
 config = context.config
@@ -29,9 +32,13 @@ target_metadata = DatabaseBase.metadata
 
 
 def getDatabaseUrl() -> URL:
-    """优先使用测试或命令行覆盖，否则读取项目统一 SQLite 配置。"""
-    # 第一优先级：命令行 -x database_path=...，用于临时实验数据库。
+    """优先使用命令覆盖，否则读取统一 DATABASE_URL 配置。"""
     arguments = context.get_x_argument(as_dictionary=True)
+    databaseUrl = arguments.get("database_url")
+    if databaseUrl:
+        return createMigrationDatabaseUrl(databaseUrl)
+
+    # 保留 database_path 供现有 SQLite 学习实验使用。
     databasePath = arguments.get("database_path")
     if databasePath:
         return createMigrationSqliteUrl(Path(databasePath))
@@ -41,8 +48,8 @@ def getDatabaseUrl() -> URL:
     if configuredUrl:
         return make_url(configuredUrl)
 
-    # 默认使用 src/config.py 中统一声明的 data/chat.sqlite3。
-    return createMigrationSqliteUrl(DATABASE_PATH)
+    configuredSettings = DatabaseSettings()
+    return createMigrationDatabaseUrl(configuredSettings.databaseUrl.get_secret_value())
 
 
 def ensureSqliteDirectory(databaseUrl: URL) -> None:
@@ -58,8 +65,9 @@ def ensureSqliteDirectory(databaseUrl: URL) -> None:
 def runMigrationsOffline() -> None:
     """不连接数据库，只把迁移渲染为 SQL 文本。"""
     # 离线模式由 `alembic upgrade head --sql` 使用。
+    databaseUrl = getDatabaseUrl()
     context.configure(
-        url=getDatabaseUrl(),
+        url=databaseUrl,
         # 提供 ORM 元数据，使 autogenerate/check 能理解目标结构。
         target_metadata=target_metadata,
         # 把参数值直接写入生成的 SQL，离线脚本不依赖运行时绑定参数。
@@ -67,8 +75,8 @@ def runMigrationsOffline() -> None:
         dialect_opts={"paramstyle": "named"},
         # 检查字段类型变化，不只检查表和字段是否存在。
         compare_type=True,
-        # 后续修改 SQLite 表时生成 batch 操作，以兼容其 ALTER TABLE 限制。
-        render_as_batch=True,
+        # 只有 SQLite 需要 batch 重建来兼容有限的 ALTER TABLE。
+        render_as_batch=databaseUrl.get_backend_name() == "sqlite",
     )
 
     # 让 Alembic 建立迁移上下文并按 revision 顺序调用 upgrade/downgrade。
@@ -89,9 +97,9 @@ def runMigrationsOnline() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            # 与离线模式保持同样的结构比较和 SQLite 兼容策略。
+            # 与离线模式保持相同的类型比较和方言策略。
             compare_type=True,
-            render_as_batch=True,
+            render_as_batch=databaseUrl.get_backend_name() == "sqlite",
         )
 
         # Alembic 根据 alembic_version 决定需要执行哪些 revision。
