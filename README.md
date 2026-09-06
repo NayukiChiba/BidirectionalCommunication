@@ -30,6 +30,26 @@ npm install
 npm run dev
 ```
 
+## Docker 启动
+
+准备 `.env` 并设置至少 32 字节的 `AUTH_SECRET_KEY`，然后执行：
+
+```bash
+docker compose build
+docker compose run --rm migrate
+docker compose up -d --no-deps app
+```
+
+Compose 使用 `chat-data` 命名卷保存 `/app/data/chat.sqlite3`。迁移由独立一次性容器
+执行，应用容器使用非 root 用户和只读根文件系统运行。验证 HTTP 与 WebSocket：
+
+```bash
+curl http://127.0.0.1:8000/health/ready
+uv run python -m examples.containerSmokeTest
+```
+
+完整说明参见 [Docker 单实例部署](docs/guide/container-deployment.md)。
+
 项目以 WebSocket 私聊为主线，逐步学习和实践：
 
 - HTTP 与 WebSocket 通信。
