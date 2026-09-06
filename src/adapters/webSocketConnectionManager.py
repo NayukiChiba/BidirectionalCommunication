@@ -1,7 +1,6 @@
 """单进程 WebSocket 连接管理适配器。"""
 
 import logging
-import warnings
 from enum import StrEnum
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -12,6 +11,10 @@ DUPLICATE_CONNECTION_CODE = 4001
 DUPLICATE_CONNECTION_REASON = "该账号已在其他连接登录"
 SERVICE_SHUTDOWN_CODE = 1001
 SERVICE_SHUTDOWN_REASON = "服务停止"
+CONNECTION_LIMIT_CODE = 4429
+CONNECTION_LIMIT_REASON = "连接容量已满"
+SERVICE_NOT_ACCEPTING_CODE = 1013
+SERVICE_NOT_ACCEPTING_REASON = "服务正在停止"
 
 
 class ConnectionSendOutcome(StrEnum):
@@ -25,12 +28,31 @@ class ConnectionSendOutcome(StrEnum):
 class ConnectionManager:
     """管理当前进程中的用户 WebSocket 连接。"""
 
-    def __init__(self) -> None:
-        """初始化在线连接表。"""
+    def __init__(self, maxConnections: int = 1_000) -> None:
+        """初始化在线连接表和单实例连接容量。"""
+        if maxConnections < 1:
+            raise ValueError("最大连接数必须大于零")
         self._connections: dict[str, WebSocket] = {}
+        self._maxConnections = maxConnections
+        self._acceptingConnections = True
+
+    @property
+    def connectionCount(self) -> int:
+        """返回当前进程已登记的连接数量。"""
+        return len(self._connections)
+
+    @property
+    def acceptingConnections(self) -> bool:
+        """返回管理器是否仍允许登记新连接。"""
+        return self._acceptingConnections
+
+    def stopAccepting(self) -> None:
+        """在优雅关闭开始时拒绝登记新连接。"""
+        self._acceptingConnections = False
 
     async def close_all(self) -> None:
         """关闭并清空当前管理器持有的全部连接。"""
+        self.stopAccepting()
         connections = list(self._connections.items())
         try:
             for user_id, websocket in connections:
@@ -44,11 +66,28 @@ class ConnectionManager:
         finally:
             self._connections.clear()
 
-    async def connect(self, user_id: str, websocket: WebSocket) -> None:
-        """接受连接，并将它登记为用户的当前有效连接。"""
+    async def connect(self, user_id: str, websocket: WebSocket) -> bool:
+        """在服务和容量允许时接受并登记用户连接。"""
         normalized_user_id = user_id.strip()
         if not normalized_user_id:
             raise ValueError("user_id 不可以为空")
+
+        if not self._acceptingConnections:
+            await websocket.accept()
+            await websocket.close(
+                code=SERVICE_NOT_ACCEPTING_CODE,
+                reason=SERVICE_NOT_ACCEPTING_REASON,
+            )
+            return False
+
+        isNewUser = normalized_user_id not in self._connections
+        if isNewUser and self.connectionCount >= self._maxConnections:
+            await websocket.accept()
+            await websocket.close(
+                code=CONNECTION_LIMIT_CODE,
+                reason=CONNECTION_LIMIT_REASON,
+            )
+            return False
 
         await websocket.accept()
 
@@ -65,6 +104,7 @@ class ConnectionManager:
                     "关闭用户 %s 被替换的 WebSocket 连接失败",
                     normalized_user_id,
                 )
+        return True
 
     def disconnect(self, user_id: str, websocket: WebSocket) -> bool:
         """仅在连接仍是当前连接时将其删除。"""
@@ -79,47 +119,12 @@ class ConnectionManager:
         """判断用户当前是否拥有已登记连接。"""
         return user_id in self._connections
 
-    async def send_to_user(
-        self,
-        user_id: str,
-        data: dict[str, object],
-    ) -> bool:
-        """通过旧接口发送 JSON 数据。"""
-        warnings.warn(
-            (
-                "send_to_user() 已弃用，请改用 "
-                "send_message_to_user(sender_id=..., data=...)"
-            ),
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return await self.send_message_to_user(
-            sender_id=user_id,
-            data=data,
-        )
-
     async def send_message_to_user(
         self,
-        sender_id: str | None = None,
-        *,
-        user_id: str | None = None,
+        sender_id: str,
         data: dict[str, object],
     ) -> bool:
-        """发送 JSON 数据，并保留旧参数兼容行为。"""
-        if sender_id is not None and user_id is not None:
-            raise TypeError("sender_id 和 user_id 不能同时提供")
-
-        if user_id is not None:
-            warnings.warn(
-                "user_id 参数已弃用，请改用 sender_id",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            sender_id = user_id
-
-        if sender_id is None:
-            raise TypeError("缺少必需参数：sender_id")
-
+        """向指定用户发送 JSON 数据。"""
         outcome = await self.deliver_to_user(user_id=sender_id, data=data)
         return outcome is ConnectionSendOutcome.DELIVERED
 
