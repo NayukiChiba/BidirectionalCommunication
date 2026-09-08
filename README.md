@@ -52,6 +52,15 @@ uv run python -m examples.containerSmokeTest
 
 完整说明参见 [Docker 单实例部署](docs/guide/container-deployment.md)。
 
+启动两个应用实例并通过 Redis 路由实时消息：
+
+```bash
+docker compose --profile multi-instance up --build -d --wait
+uv run python -m examples.containerSmokeTest \
+  --base-url http://127.0.0.1:8000 \
+  --secondary-base-url http://127.0.0.1:8001
+```
+
 项目以 WebSocket 私聊为主线，逐步学习和实践：
 
 - HTTP 与 WebSocket 通信。
@@ -64,6 +73,7 @@ uv run python -m examples.containerSmokeTest
 - 一对一会话聚合、成员授权和并发唯一性。
 - 累计送达/已读位置与 WebSocket 重连补偿。
 - WebSocket 资源限制、结构化日志、存活/就绪检查和优雅关闭。
+- Redis Pub/Sub 跨实例实时路由和带 TTL 的在线租约。
 
 ## 第一版目标
 
@@ -115,8 +125,8 @@ main → bootstrap → entrypoints / adapters → application → domain
   对应的交错测试为 `test_replaced_connection_cannot_remove_current_connection`。
 - 当前没有空闲超时、代理断链检测或在线状态时效需求，因此不增加应用级心跳。
   WebSocket 协议级 Ping/Pong 由服务器实现负责，不与业务消息混用。
-- 在线表仅服务单进程，事件循环内的连接登记操作不跨线程，也不跨进程，所以当前不
-  需要 Redis 或锁。扩展到多进程或多实例时，才需要引入共享在线状态与跨实例投递。
+- `ConnectionManager` 始终只保存当前进程连接；配置 Redis 后，实例租约和 Pub/Sub
+  负责跨实例发现与实时路由，不会把 WebSocket 对象放入 Redis。
 
 ## 当前限制
 
@@ -128,4 +138,5 @@ main → bootstrap → entrypoints / adapters → application → domain
 - 离线消息由客户端在 WebSocket 重连后主动提交位置并分批同步。
 - 送达和已读位置按用户累计保存，尚不区分同一用户的多个设备。
 - `accepted` 只表示服务端已持久化，`pushed` 也不表示用户已经阅读。
-- PostgreSQL 已解决 SQLite 单写者限制，但尚未实现跨实例 WebSocket 路由。
+- Redis Pub/Sub 只提供至多一次实时路由；丢失事件仍依靠 PostgreSQL 重连补偿。
+- 在线状态是带 TTL 的实例租约，暂不支持多设备独立连接和全局立即踢旧连接。
