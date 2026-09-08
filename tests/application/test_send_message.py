@@ -285,6 +285,10 @@ async def test_send_message_commits_before_delivering_domain_message() -> None:
             DeliveryOutcome.FAILED,
             id="delivery-failed",
         ),
+        pytest.param(
+            DeliveryOutcome.ROUTED,
+            id="routed-across-instance",
+        ),
     ],
 )
 async def test_send_message_keeps_commit_when_delivery_does_not_succeed(

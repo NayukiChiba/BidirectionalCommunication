@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from bootstrap import create_app
-from src.config import AuthSettings, RuntimeSettings
+from src.config import AuthSettings, RedisSettings, RuntimeSettings
 
 
 def test_liveness_does_not_depend_on_database(testClient: TestClient) -> None:
@@ -42,6 +42,7 @@ def test_unmigrated_database_is_alive_but_not_ready(tmp_path: Path) -> None:
     app = create_app(
         databasePath=tmp_path / "unmigrated.sqlite3",
         authSettings=AuthSettings(secretKey="x" * 64),
+        redisSettings=RedisSettings(redisUrl=None, _env_file=None),
         runtimeSettings=RuntimeSettings(),
     )
 

@@ -46,3 +46,17 @@ def test_compose_separates_postgres_migration_and_application() -> None:
     assert compose.count("DATABASE_URL: postgresql+asyncpg://") == 2
     assert "read_only: true" in compose
     assert "no-new-privileges:true" in compose
+
+
+def test_compose_routes_two_instances_through_ephemeral_redis() -> None:
+    """Redis 只承载实时路由，第二应用实例必须使用独立实例 ID。"""
+    compose = (PROJECT_ROOT / "compose.yaml").read_text(encoding="utf-8")
+
+    assert "  redis:" in compose
+    assert "redis-server" in compose
+    assert '"--appendonly", "no"' in compose
+    assert "REDIS_URL: redis://redis:6379/0" in compose
+    assert "  app-b:" in compose
+    assert 'profiles: ["multi-instance"]' in compose
+    assert "INSTANCE_ID: app-a" in compose
+    assert "INSTANCE_ID: app-b" in compose

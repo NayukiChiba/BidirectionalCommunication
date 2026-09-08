@@ -14,7 +14,7 @@ from src.adapters.database.migrationConfig import (
     createMigrationConfig,
     createMigrationEngine,
 )
-from src.config import AuthSettings, DatabaseSettings, RuntimeSettings
+from src.config import AuthSettings, DatabaseSettings, RedisSettings, RuntimeSettings
 
 TEST_AUTH_SECRET = "test-auth-secret-" + ("x" * 64)
 
@@ -24,6 +24,11 @@ def createTestAuthSettings() -> AuthSettings:
     return AuthSettings(secretKey=TEST_AUTH_SECRET)
 
 
+def createTestRedisSettings() -> RedisSettings:
+    """创建不读取开发机 .env 的单实例配置。"""
+    return RedisSettings(redisUrl=None, _env_file=None)
+
+
 def test_create_app_composes_dependencies_and_routes(tmp_path: Path) -> None:
     """组合根应返回具有完整依赖和路由的 FastAPI 应用。"""
     databasePath = tmp_path / "bootstrap.sqlite3"
@@ -31,6 +36,7 @@ def test_create_app_composes_dependencies_and_routes(tmp_path: Path) -> None:
     app = create_app(
         databasePath=databasePath,
         authSettings=createTestAuthSettings(),
+        redisSettings=createTestRedisSettings(),
     )
 
     assert isinstance(app, FastAPI)
@@ -65,6 +71,7 @@ def test_app_startup_does_not_create_database_schema(tmp_path: Path) -> None:
     app = create_app(
         databasePath=databasePath,
         authSettings=createTestAuthSettings(),
+        redisSettings=createTestRedisSettings(),
     )
 
     with TestClient(app) as client:
@@ -82,10 +89,12 @@ def test_create_app_returns_independent_compositions(tmp_path: Path) -> None:
     first_app = create_app(
         databasePath=tmp_path / "first.sqlite3",
         authSettings=createTestAuthSettings(),
+        redisSettings=createTestRedisSettings(),
     )
     second_app = create_app(
         databasePath=tmp_path / "second.sqlite3",
         authSettings=createTestAuthSettings(),
+        redisSettings=createTestRedisSettings(),
     )
 
     assert first_app.state.connection_manager is not second_app.state.connection_manager
@@ -103,6 +112,7 @@ def test_lifespan_stops_admission_before_releasing_resources(tmp_path: Path) -> 
     app = create_app(
         databasePath=databasePath,
         authSettings=createTestAuthSettings(),
+        redisSettings=createTestRedisSettings(),
         runtimeSettings=RuntimeSettings(),
     )
     manager = app.state.connection_manager
@@ -120,6 +130,7 @@ async def test_database_url_switches_bootstrap_to_postgresql() -> None:
     """组合根应按配置切换数据库，不改变应用服务和领域对象。"""
     app = create_app(
         authSettings=createTestAuthSettings(),
+        redisSettings=createTestRedisSettings(),
         databaseSettings=DatabaseSettings(
             databaseUrl="postgresql://chat:secret@localhost:5432/chat",
             poolSize=4,
@@ -135,3 +146,34 @@ async def test_database_url_switches_bootstrap_to_postgresql() -> None:
         assert app.state.send_message_service is not None
     finally:
         await app.state.database_engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_redis_is_optional_and_configured_only_in_composition_root(
+    tmp_path: Path,
+) -> None:
+    """单实例默认不依赖 Redis，配置 URL 后才组装跨实例网关。"""
+    singleInstanceApp = create_app(
+        databasePath=tmp_path / "single.sqlite3",
+        authSettings=createTestAuthSettings(),
+        redisSettings=RedisSettings(redisUrl=None, _env_file=None),
+    )
+    distributedApp = create_app(
+        databasePath=tmp_path / "distributed.sqlite3",
+        authSettings=createTestAuthSettings(),
+        redisSettings=RedisSettings(
+            redisUrl="redis://localhost:6379/0",
+            instanceId="test-instance",
+            _env_file=None,
+        ),
+    )
+    try:
+        assert (
+            singleInstanceApp.state.realtime_gateway
+            is singleInstanceApp.state.connection_manager
+        )
+        assert distributedApp.state.realtime_gateway.instanceId == "test-instance"
+    finally:
+        await singleInstanceApp.state.database_engine.dispose()
+        await distributedApp.state.realtime_gateway.close()
+        await distributedApp.state.database_engine.dispose()

@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from bootstrap import create_app
 from src.adapters.database.migrationConfig import createMigrationConfig
-from src.config import AuthSettings
+from src.config import AuthSettings, RedisSettings
 
 TEST_AUTH_SECRET = "test-auth-secret-" + ("x" * 64)
 TEST_PASSWORD = "correct horse battery staple"
@@ -42,7 +42,11 @@ def application(tmp_path: Path, authSettings: AuthSettings) -> FastAPI:
     """为每个测试创建使用独立 SQLite 文件的应用。"""
     databasePath = tmp_path / "application.sqlite3"
     command.upgrade(createMigrationConfig(databasePath), "head")
-    return create_app(databasePath=databasePath, authSettings=authSettings)
+    return create_app(
+        databasePath=databasePath,
+        authSettings=authSettings,
+        redisSettings=RedisSettings(redisUrl=None, _env_file=None),
+    )
 
 
 @pytest.fixture

@@ -47,6 +47,11 @@ class FakeConnectionSender:
             id="recipient-offline",
         ),
         pytest.param(
+            ConnectionSendOutcome.ROUTED,
+            DeliveryOutcome.ROUTED,
+            id="routed-across-instance",
+        ),
+        pytest.param(
             ConnectionSendOutcome.FAILED,
             DeliveryOutcome.FAILED,
             id="failed",

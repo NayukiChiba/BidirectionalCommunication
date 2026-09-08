@@ -136,6 +136,7 @@ def test_concrete_dependencies_are_only_created_in_bootstrap() -> None:
         "GetMessageHistoryService",
         "JwtAccessTokenProvider",
         "PwdlibPasswordHasher",
+        "RedisRealtimeGateway",
         "SendMessageService",
         "SyncMessagesService",
         "AsyncSqlAlchemyMessageUnitOfWorkFactory",

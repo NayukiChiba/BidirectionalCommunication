@@ -20,5 +20,8 @@ uv run pytest
 PostgreSQL fixture 会在模块开始和结束时把目标数据库降级到 `base`。该 URL 只能指向
 隔离测试数据库，禁止使用开发或生产数据库。
 
+设置 `TEST_REDIS_URL` 后还会运行真实 Redis 租约、接管、跨实例 Pub/Sub 和订阅恢复
+测试。Redis fixture 会执行 `FLUSHDB`，必须使用隔离测试 DB，禁止指向共享环境。
+
 并发和时间测试不使用固定 `sleep`：限流器注入测试时钟，并发事务使用
 `asyncio.gather()`/事件协调，WebSocket 测试等待明确协议事件。

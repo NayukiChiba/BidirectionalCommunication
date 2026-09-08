@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from bootstrap import create_app
 from src.adapters.database.migrationConfig import createMigrationConfig
-from src.config import AuthSettings, RuntimeSettings
+from src.config import AuthSettings, RedisSettings, RuntimeSettings
 from tests.conftest import TEST_AUTH_SECRET, TEST_PASSWORD
 
 
@@ -19,6 +19,7 @@ def createLimitedClient(databasePath: Path) -> TestClient:
     app = create_app(
         databasePath=databasePath,
         authSettings=AuthSettings(secretKey=TEST_AUTH_SECRET),
+        redisSettings=RedisSettings(redisUrl=None, _env_file=None),
         runtimeSettings=RuntimeSettings(
             maxWebSocketMessageBytes=1_024,
             inputRateLimitCount=2,

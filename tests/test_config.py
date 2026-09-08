@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from src.config import AuthSettings, DatabaseSettings, RuntimeSettings
+from src.config import AuthSettings, DatabaseSettings, RedisSettings, RuntimeSettings
 
 
 def test_auth_settings_requires_environment_secret(
@@ -112,3 +112,29 @@ def test_database_settings_read_environment_url(
     settings = DatabaseSettings(_env_file=None)
 
     assert settings.databaseUrl.get_secret_value() == databaseUrl
+
+
+def test_redis_settings_are_optional_and_hide_connection_url() -> None:
+    """未配置 Redis 时保持单实例，启用后 URL 不能出现在 repr。"""
+    assert RedisSettings(redisUrl="", _env_file=None).enabled is False
+    redisUrl = "redis://:secret-password@localhost:6379/0"
+    settings = RedisSettings(
+        redisUrl=redisUrl,
+        instanceId="instance-a",
+        _env_file=None,
+    )
+
+    assert settings.enabled is True
+    assert settings.redisUrl is not None
+    assert settings.redisUrl.get_secret_value() == redisUrl
+    assert redisUrl not in repr(settings)
+
+
+def test_redis_presence_refresh_must_be_shorter_than_lease() -> None:
+    """刷新不够频繁会制造在线状态空窗，应在启动前拒绝。"""
+    with pytest.raises(ValidationError, match="刷新周期必须短于租约时间"):
+        RedisSettings(
+            presenceLeaseSeconds=10,
+            presenceRefreshSeconds=10,
+            _env_file=None,
+        )
