@@ -21,6 +21,7 @@ class ConnectionSendOutcome(StrEnum):
     """连接管理器的一次实际发送结果。"""
 
     DELIVERED = "delivered"
+    ROUTED = "routed"
     RECIPIENT_OFFLINE = "recipient_offline"
     FAILED = "failed"
 
@@ -45,6 +46,11 @@ class ConnectionManager:
     def acceptingConnections(self) -> bool:
         """返回管理器是否仍允许登记新连接。"""
         return self._acceptingConnections
+
+    @property
+    def connectedUserIds(self) -> tuple[str, ...]:
+        """返回当前实例本地连接用户的只读快照。"""
+        return tuple(self._connections)
 
     def stopAccepting(self) -> None:
         """在优雅关闭开始时拒绝登记新连接。"""
