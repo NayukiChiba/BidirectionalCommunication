@@ -41,8 +41,9 @@ def createWebSocketUrl(baseUrl: str) -> str:
     return urlunsplit((scheme, parsed.netloc, "/ws", "", ""))
 
 
-async def runSmokeTest(baseUrl: str) -> None:
+async def runSmokeTest(baseUrl: str, secondaryBaseUrl: str | None = None) -> None:
     """验证就绪、认证、会话创建及双向 WebSocket 消息。"""
+    recipientBaseUrl = secondaryBaseUrl or baseUrl
     suffix = secrets.token_hex(6)
     password = f"smoke-password-{secrets.token_hex(8)}"
     async with httpx.AsyncClient(base_url=baseUrl, timeout=5) as client:
@@ -52,12 +53,16 @@ async def runSmokeTest(baseUrl: str) -> None:
             registerAndLogin(client, f"smoke-a-{suffix}", password),
             registerAndLogin(client, f"smoke-b-{suffix}", password),
         )
-        secondIdentity = (
-            await client.get(
-                "/auth/me",
-                headers={"Authorization": f"Bearer {secondToken}"},
-            )
-        ).json()
+        async with httpx.AsyncClient(
+            base_url=recipientBaseUrl,
+            timeout=5,
+        ) as recipientClient:
+            secondIdentity = (
+                await recipientClient.get(
+                    "/auth/me",
+                    headers={"Authorization": f"Bearer {secondToken}"},
+                )
+            ).json()
         conversationResponse = await client.post(
             "/conversations",
             headers={"Authorization": f"Bearer {firstToken}"},
@@ -67,8 +72,9 @@ async def runSmokeTest(baseUrl: str) -> None:
         conversationId = conversationResponse.json()["conversation_id"]
 
     websocketUrl = createWebSocketUrl(baseUrl)
+    recipientWebSocketUrl = createWebSocketUrl(recipientBaseUrl)
     async with websockets.connect(
-        websocketUrl,
+        recipientWebSocketUrl,
         additional_headers={"Authorization": f"Bearer {secondToken}"},
     ) as recipientWebSocket:
         async with websockets.connect(
@@ -99,6 +105,9 @@ async def runSmokeTest(baseUrl: str) -> None:
         raise RuntimeError("消息没有路由到会话中的另一名成员")
     if acceptedEvent["server_message_id"] != messageEvent["server_message_id"]:
         raise RuntimeError("持久化确认与实时消息身份不一致")
+    expectedPushStatus = "routed" if secondaryBaseUrl else "pushed"
+    if acceptedEvent["push_status"] != expectedPushStatus:
+        raise RuntimeError("实时推送结果与实例拓扑不一致")
     print("容器 HTTP、迁移和 WebSocket 冒烟测试通过")
 
 
@@ -110,8 +119,18 @@ def main() -> None:
         default="http://127.0.0.1:8000",
         help="映射到宿主机的 HTTP 服务地址",
     )
+    parser.add_argument(
+        "--secondary-base-url",
+        default=None,
+        help="可选的接收方实例 HTTP 地址，用于跨实例 Redis 验收",
+    )
     arguments = parser.parse_args()
-    asyncio.run(runSmokeTest(arguments.base_url.rstrip("/")))
+    secondaryBaseUrl = (
+        arguments.secondary_base_url.rstrip("/")
+        if arguments.secondary_base_url
+        else None
+    )
+    asyncio.run(runSmokeTest(arguments.base_url.rstrip("/"), secondaryBaseUrl))
 
 
 if __name__ == "__main__":
