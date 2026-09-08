@@ -15,6 +15,7 @@ from pydantic import (
     ValidationError,
     field_validator,
 )
+from starlette.websockets import WebSocketState
 
 from src.application import (
     AdvanceConversationPositionService,
@@ -199,6 +200,9 @@ def create_router(
                     "user_id": userId,
                 },
             )
+            return
+        if websocket.application_state is not WebSocketState.CONNECTED:
+            connection_gateway.disconnect(user_id=userId, websocket=websocket)
             return
         rateLimiter = rateLimiterFactory()
         logger.info(
