@@ -26,6 +26,7 @@ class DeliveryOutcome(StrEnum):
     """实时推送尝试的观测结果，不表示客户端已经确认。"""
 
     PUSHED = "pushed"
+    ROUTED = "routed"
     RECIPIENT_OFFLINE = "recipient_offline"
     FAILED = "failed"
 
