@@ -18,6 +18,9 @@ SAFE_CONTEXT_FIELDS = (
     "path",
     "duration_ms",
     "connection_count",
+    "instance_id",
+    "target_instance_id",
+    "internal_event_id",
 )
 
 

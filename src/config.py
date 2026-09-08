@@ -7,7 +7,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -124,3 +124,99 @@ class DatabaseSettings(BaseSettings):
         ge=60,
         le=86_400,
     )
+
+
+class RedisSettings(BaseSettings):
+    """可选 Redis 跨实例实时路由和在线租约配置。"""
+
+    model_config = SettingsConfigDict(
+        env_file=PROJECT_ROOT / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        populate_by_name=True,
+    )
+
+    redisUrl: SecretStr | None = Field(default=None, alias="REDIS_URL")
+    instanceId: str | None = Field(default=None, alias="INSTANCE_ID")
+    presenceLeaseSeconds: int = Field(
+        default=30,
+        alias="REDIS_PRESENCE_LEASE_SECONDS",
+        ge=5,
+        le=300,
+    )
+    presenceRefreshSeconds: float = Field(
+        default=10.0,
+        alias="REDIS_PRESENCE_REFRESH_SECONDS",
+        ge=1.0,
+        le=120.0,
+    )
+    subscriberRetrySeconds: float = Field(
+        default=1.0,
+        alias="REDIS_SUBSCRIBER_RETRY_SECONDS",
+        ge=0.1,
+        le=30.0,
+    )
+    operationTimeoutSeconds: float = Field(
+        default=1.0,
+        alias="REDIS_OPERATION_TIMEOUT_SECONDS",
+        ge=0.1,
+        le=10.0,
+    )
+    maxConnections: int = Field(
+        default=20,
+        alias="REDIS_MAX_CONNECTIONS",
+        ge=2,
+        le=1_000,
+    )
+    channelPrefix: str = Field(
+        default="bidirectional-chat",
+        alias="REDIS_CHANNEL_PREFIX",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_.:-]+$",
+    )
+    recentEventTtlSeconds: float = Field(
+        default=60.0,
+        alias="REDIS_RECENT_EVENT_TTL_SECONDS",
+        ge=1.0,
+        le=3_600.0,
+    )
+    recentEventLimit: int = Field(
+        default=10_000,
+        alias="REDIS_RECENT_EVENT_LIMIT",
+        ge=100,
+        le=100_000,
+    )
+
+    @field_validator("redisUrl", mode="before")
+    @classmethod
+    def normalizeEmptyRedisUrl(cls, value: object) -> object:
+        """允许空环境变量明确关闭 Redis 模式。"""
+        return None if value == "" else value
+
+    @field_validator("instanceId")
+    @classmethod
+    def validateInstanceId(cls, instanceId: str | None) -> str | None:
+        """实例 ID 必须适合作为 Redis 频道的一部分。"""
+        if instanceId is None:
+            return None
+        normalizedInstanceId = instanceId.strip()
+        if not normalizedInstanceId or any(
+            character
+            not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.:-"
+            for character in normalizedInstanceId
+        ):
+            raise ValueError("INSTANCE_ID 只能包含字母、数字、点、冒号、下划线和连字符")
+        return normalizedInstanceId
+
+    @model_validator(mode="after")
+    def validateLeaseRefresh(self) -> "RedisSettings":
+        """刷新周期必须严格短于在线租约。"""
+        if self.presenceRefreshSeconds >= self.presenceLeaseSeconds:
+            raise ValueError("Redis 在线租约刷新周期必须短于租约时间")
+        return self
+
+    @property
+    def enabled(self) -> bool:
+        """返回是否配置 Redis 多实例模式。"""
+        return self.redisUrl is not None
