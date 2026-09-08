@@ -1,7 +1,7 @@
 # Docker 与 PostgreSQL 部署
 
-Compose 现在运行三个职责独立的容器：PostgreSQL、一次性 Alembic 迁移和聊天应用。
-数据库数据保存在 `postgres-data` 命名卷，应用镜像和容器中都不保存数据库文件。
+Compose 默认运行 PostgreSQL、Redis、一次性 Alembic 迁移和聊天应用。Redis 不启用
+持久化，只保存瞬时实例路由和在线租约；数据库数据保存在 `postgres-data` 命名卷。
 
 ## 文件职责
 
@@ -87,7 +87,7 @@ docker compose exec app id
 
 输出应包含 `uid=10001(appuser)`。应用和迁移容器使用只读根文件系统与
 `no-new-privileges`，临时文件只写入 `/tmp`。PostgreSQL 端口只绑定宿主机
-`127.0.0.1`，不会默认暴露到外部网络。
+`127.0.0.1`，Redis 端口也只绑定本机，不会默认暴露到外部网络。
 
 ## 停止与数据卷
 
@@ -99,6 +99,6 @@ docker compose down
 明确不需要数据或专门的测试环境中使用。备份、SQLite 数据迁移和回滚演练参见
 [PostgreSQL 迁移与事务边界](/guide/postgresql)。
 
-PostgreSQL 已解决 SQLite 文件共享和单写者限制，但当前 WebSocket 在线表没有共享。
-因此数据库层可以支持多个客户端进程，整个聊天应用仍不承诺多副本部署；多实例还需
-跨实例连接路由。
+使用 `--profile multi-instance` 会额外启动 `app-b`，由 Redis 路由两个实例间的实时
+消息。完整命令、故障补偿和语义边界参见
+[Redis 多实例实时路由](/guide/redis-multi-instance)。

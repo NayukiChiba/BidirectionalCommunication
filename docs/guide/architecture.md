@@ -59,6 +59,7 @@ AsyncSqlAlchemyConversationUnitOfWorkFactory
 AsyncSqlAlchemyUserUnitOfWorkFactory
 PwdlibPasswordHasher / JwtAccessTokenProvider
 WebSocketMessageNotifier
+RedisRealtimeGateway（配置 REDIS_URL 时）
 AuthenticationService
 CreateConversationService
 AdvanceConversationPositionService / SyncMessagesService
@@ -79,6 +80,10 @@ Bootstrap 不创建或迁移数据库表；数据库结构必须在启动应用�
 `/health/live` 只确认进程事件循环可响应；`/health/ready` 使用短查询确认数据库迁移
 版本与应用匹配。关闭时先停止登记新 WebSocket，再关闭已有连接，最后释放数据库
 Engine。完整基线参见[质量、可观测性与安全基线](/guide/quality-security)。
+
+Redis 模式下，`RedisRealtimeGateway` 组合本地 `ConnectionManager`、实例在线租约和
+Pub/Sub。ConnectionManager 始终只持有当前进程的 WebSocket；数据库仍是可靠消息来源。
+详见[Redis 多实例实时路由](/guide/redis-multi-instance)。
 
 ## WebSocket 的两个方向
 

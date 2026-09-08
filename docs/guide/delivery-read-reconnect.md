@@ -29,10 +29,11 @@
 `accepted` 是发送用例的成功结果。`push_status` 只记录本次实时推送观测：
 
 - `pushed`：已经写入接收者当前 WebSocket。
+- `routed`：已经发布到接收者所在实例的 Redis 频道。
 - `recipient_offline`：接收者没有当前连接。
 - `failed`：存在连接，但写入失败。
 
-后三种结果都不回滚已经提交的消息。发送方应保存 `server_message_id`，不能把
+所有实时结果都不回滚已经提交的消息。发送方应保存 `server_message_id`，不能把
 `push_status=pushed` 显示成“对方已读”。
 
 ## 累计确认

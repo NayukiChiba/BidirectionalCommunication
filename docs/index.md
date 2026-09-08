@@ -51,6 +51,7 @@ vNext 已加入可配置 PostgreSQL 后端、连接池和真实跨方言迁移/�
 - [质量、可观测性与安全基线](/guide/quality-security)：测试层级、资源限制、日志和健康检查。
 - [Docker 单实例部署](/guide/container-deployment)：镜像构建、显式迁移、持久卷和冒烟测试。
 - [PostgreSQL 迁移与事务边界](/guide/postgresql)：驱动、连接池、跨方言测试、备份和回滚。
+- [Redis 多实例实时路由](/guide/redis-multi-instance)：实例频道、在线租约、至多一次和数据库补偿。
 - [Alembic 数据库迁移](/guide/database-migrations)：版本历史、升级降级和开发部署流程。
 - [Repository 与 Unit of Work](/guide/repository-unit-of-work)：持久化端口、事务边界和失败恢复。
 - [消息领域模型](/domain/message-model)：领域概念、不变量和传输转换边界。

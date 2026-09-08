@@ -72,7 +72,8 @@ ws://127.0.0.1:8000/ws
 ```
 
 `accepted` 只表示服务端已经持久化，不表示接收客户端已经处理或用户已经阅读消息。
-`push_status` 可能是 `pushed`、`recipient_offline` 或 `failed`，只用于观察实时推送。
+`push_status` 可能是 `pushed`、`routed`、`recipient_offline` 或 `failed`，只用于观察
+实时推送。`routed` 表示已发布到另一个实例的 Redis 频道，不代表接收客户端已确认。
 使用相同 `client_message_id` 重试时，服务端返回原消息的同一个 `server_message_id`。
 实时消息事件可能再次推送，客户端应按 `server_message_id` 去重。
 
