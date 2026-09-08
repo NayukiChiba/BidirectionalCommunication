@@ -1,10 +1,12 @@
 """FastAPI 应用的唯一组合根。"""
 
 import logging
+import socket
 from contextlib import asynccontextmanager
 from functools import partial
 from pathlib import Path
 from typing import AsyncIterator
+from uuid import uuid4
 
 from fastapi import FastAPI
 
@@ -22,6 +24,7 @@ from src.adapters.database import (
     createAsyncSessionFactory,
     createAsyncSqliteUrl,
 )
+from src.adapters.redis import RedisRealtimeGateway, createRedisClient
 from src.adapters.security import JwtAccessTokenProvider, PwdlibPasswordHasher
 from src.application import (
     AdvanceConversationPositionService,
@@ -35,6 +38,7 @@ from src.config import (
     DATABASE_HEAD_REVISION,
     AuthSettings,
     DatabaseSettings,
+    RedisSettings,
     RuntimeSettings,
 )
 from src.entrypoints import (
@@ -56,16 +60,44 @@ def create_app(
     databasePath: Path | None = None,
     authSettings: AuthSettings | None = None,
     databaseSettings: DatabaseSettings | None = None,
+    redisSettings: RedisSettings | None = None,
     runtimeSettings: RuntimeSettings | None = None,
 ) -> FastAPI:
     """创建并组装可运行的 FastAPI 应用。"""
     resolvedAuthSettings = authSettings or AuthSettings()
     resolvedDatabaseSettings = databaseSettings or DatabaseSettings()
+    resolvedRedisSettings = redisSettings or RedisSettings()
     resolvedRuntimeSettings = runtimeSettings or RuntimeSettings()
     configureStructuredLogging(resolvedRuntimeSettings.logLevel)
     connection_manager = ConnectionManager(
         maxConnections=resolvedRuntimeSettings.maxWebSocketConnections
     )
+    redis_realtime_gateway: RedisRealtimeGateway | None = None
+    connection_gateway = connection_manager
+    if resolvedRedisSettings.enabled:
+        redisUrl = resolvedRedisSettings.redisUrl
+        if redisUrl is None:
+            raise RuntimeError("Redis 已启用但缺少 REDIS_URL")
+        instanceId = resolvedRedisSettings.instanceId or (
+            f"{socket.gethostname()}-{uuid4().hex[:8]}"
+        )
+        redisClient = createRedisClient(
+            redisUrl.get_secret_value(),
+            resolvedRedisSettings.maxConnections,
+        )
+        redis_realtime_gateway = RedisRealtimeGateway(
+            connection_manager,
+            redisClient,
+            instanceId=instanceId,
+            channelPrefix=resolvedRedisSettings.channelPrefix,
+            presenceLeaseSeconds=resolvedRedisSettings.presenceLeaseSeconds,
+            presenceRefreshSeconds=resolvedRedisSettings.presenceRefreshSeconds,
+            subscriberRetrySeconds=resolvedRedisSettings.subscriberRetrySeconds,
+            operationTimeoutSeconds=resolvedRedisSettings.operationTimeoutSeconds,
+            recentEventTtlSeconds=resolvedRedisSettings.recentEventTtlSeconds,
+            recentEventLimit=resolvedRedisSettings.recentEventLimit,
+        )
+        connection_gateway = redis_realtime_gateway
     databaseUrl = (
         createAsyncSqliteUrl(databasePath)
         if databasePath is not None
@@ -95,7 +127,7 @@ def create_app(
         accessTokenProvider=access_token_provider,
     )
     current_user_dependency = CurrentUserDependency(authentication_service)
-    message_notifier = WebSocketMessageNotifier(connection_manager)
+    message_notifier = WebSocketMessageNotifier(connection_gateway)
     send_message_service = SendMessageService(
         unitOfWorkFactory=unit_of_work_factory,
         conversationUnitOfWorkFactory=conversation_unit_of_work_factory,
@@ -128,11 +160,15 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         """释放组合根创建的连接资源。"""
         try:
+            if redis_realtime_gateway is not None:
+                await redis_realtime_gateway.start()
             logger.info("application_started", extra={"event": "lifecycle"})
             yield
         finally:
             logger.info("application_stopping", extra={"event": "lifecycle"})
             connection_manager.stopAccepting()
+            if redis_realtime_gateway is not None:
+                await redis_realtime_gateway.close()
             await connection_manager.close_all()
             await database_engine.dispose()
             logger.info("application_stopped", extra={"event": "lifecycle"})
@@ -142,6 +178,8 @@ def create_app(
     app.state.connection_manager = connection_manager
     app.state.database_engine = database_engine
     app.state.database_settings = resolvedDatabaseSettings
+    app.state.redis_settings = resolvedRedisSettings
+    app.state.realtime_gateway = connection_gateway
     app.state.session_factory = session_factory
     app.state.unit_of_work_factory = unit_of_work_factory
     app.state.user_unit_of_work_factory = user_unit_of_work_factory
@@ -171,7 +209,7 @@ def create_app(
     app.include_router(
         create_router(
             send_message_service=send_message_service,
-            connection_gateway=connection_manager,
+            connection_gateway=connection_gateway,
             authenticationService=authentication_service,
             positionService=position_service,
             syncService=sync_service,
