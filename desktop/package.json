@@ -1,7 +1,7 @@
 {
   "name": "bidirectional-communication-desktop",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,7 +9,11 @@
     "backend:build": "uv run --project .. python buildBackend.py",
     "backend:test": "uv run --project .. python smokeBackend.py",
     "test": "vitest run",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:dev:standalone": "tauri dev --config src-tauri/tauri.standalone.conf.json",
+    "tauri:build:client": "tauri build --bundles nsis",
+    "tauri:build:standalone": "tauri build --config src-tauri/tauri.standalone.conf.json --bundles nsis",
+    "release:rename": "uv run --project .. python renameInstallers.py"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",

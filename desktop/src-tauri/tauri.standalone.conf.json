@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "双向通信",
+  "identifier": "com.nayukichiba.bidirectionalcommunication",
+  "build": {
+    "beforeDevCommand": "npm run backend:build && npm run dev",
+    "beforeBuildCommand": "npm run backend:build && npm run build"
+  },
+  "bundle": {
+    "externalBin": ["binaries/bidirectional-backend"]
+  }
+}
