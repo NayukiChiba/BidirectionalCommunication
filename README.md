@@ -31,6 +31,40 @@ npm install
 npm run dev
 ```
 
+## 桌面客户端
+
+`desktop/` 提供使用 Rust、Tauri 2 和 Vue 3 构建的桌面聊天客户端。客户端通过 Rust
+层访问 HTTP API，并在 WebSocket 握手时附带 Bearer 令牌，支持注册登录、创建单聊、
+历史消息、实时收发、累计送达/已读位置和断线重连。
+
+先按上文启动后端，再启动桌面开发环境：
+
+```bash
+cd desktop
+npm install
+npm run tauri dev
+```
+
+运行前端与 Rust 检查：
+
+```bash
+cd desktop
+npm test
+npm run build
+cd src-tauri
+cargo test
+```
+
+生成当前平台的桌面安装包：
+
+```bash
+cd desktop
+npm run tauri build
+```
+
+首次登录页默认连接 `http://127.0.0.1:8000`，也可以填写其他 HTTP 或 HTTPS 后端
+地址。访问令牌只保存在进程内存中，不写入浏览器持久化存储。
+
 ## Docker 启动
 
 准备 `.env`，设置 `AUTH_SECRET_KEY`、`POSTGRES_PASSWORD` 并同步 `DATABASE_URL` 中的
