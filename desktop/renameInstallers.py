@@ -40,8 +40,8 @@ def renameInstallers() -> list[Path]:
 
 def main() -> None:
     """命令行入口。"""
-    for installer in renameInstallers():
-        print(f"发布安装程序：{installer}")
+    renamedInstallers = renameInstallers()
+    print(f"Renamed {len(renamedInstallers)} installer(s)")
 
 
 if __name__ == "__main__":

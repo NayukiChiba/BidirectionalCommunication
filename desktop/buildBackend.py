@@ -101,7 +101,7 @@ def buildBackend() -> Path:
     builtExecutable = DIST_DIR / f"{SIDECAR_NAME}{executableSuffix}"
     targetExecutable = BINARY_DIR / f"{SIDECAR_NAME}-{targetTriple}{executableSuffix}"
     shutil.copy2(builtExecutable, targetExecutable)
-    print(f"内置后端已生成：{targetExecutable}")
+    print("Backend sidecar build completed")
     return targetExecutable
 
 

@@ -90,7 +90,7 @@ def runSmokeTest() -> None:
                 raise RuntimeError("内置后端没有创建 SQLite 数据库")
         finally:
             terminateProcessTree(process)
-    print("内置后端冒烟测试通过")
+    print("Backend sidecar smoke test passed")
 
 
 def terminateProcessTree(process: subprocess.Popen[bytes]) -> None:
