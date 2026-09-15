@@ -76,7 +76,12 @@ const filteredConversations = computed(() => {
   }
   return conversations.value.filter((conversation) => {
     const peer = getPeerId(conversation).toLowerCase();
-    return peer.includes(query) || conversation.conversation_id.toLowerCase().includes(query);
+    const peerUsername = getPeerUsername(conversation).toLowerCase();
+    return (
+      peer.includes(query) ||
+      peerUsername.includes(query) ||
+      conversation.conversation_id.toLowerCase().includes(query)
+    );
   });
 });
 const connectionLabel = computed(() => {
@@ -94,6 +99,14 @@ function getPeerId(conversation: Conversation): string {
     conversation.member_ids.find((memberId) => memberId !== currentUser.value?.user_id) ??
     conversation.member_ids[0] ??
     "未知用户"
+  );
+}
+
+function getPeerUsername(conversation: Conversation): string {
+  const peerId = getPeerId(conversation);
+  return (
+    conversation.members?.find((member) => member.user_id === peerId)?.username ??
+    shortId(peerId)
   );
 }
 
@@ -174,6 +187,24 @@ function addConversation(conversation: Conversation): void {
     conversations.value.unshift(conversation);
   }
   persistConversations();
+}
+
+async function hydrateConversation(conversation: Conversation): Promise<Conversation> {
+  if (conversation.members?.length) {
+    return conversation;
+  }
+  try {
+    const hydrated = await desktopBridge.createConversation(
+      serverUrl.value,
+      accessToken.value,
+      getPeerId(conversation),
+    );
+    addConversation(hydrated);
+    return hydrated;
+  } catch {
+    // 旧版缓存仍可使用用户 ID 展示，网络恢复后再次刷新。
+    return conversation;
+  }
 }
 
 function ensureConversationForMessage(event: {
@@ -320,16 +351,17 @@ async function createNewConversation(): Promise<void> {
 }
 
 async function openConversation(conversation: Conversation): Promise<void> {
-  activeConversationId.value = conversation.conversation_id;
+  const resolvedConversation = await hydrateConversation(conversation);
+  activeConversationId.value = resolvedConversation.conversation_id;
   newConversationOpen.value = false;
-  if (!messagesByConversation.value[conversation.conversation_id]) {
-    await loadHistory(conversation.conversation_id);
+  if (!messagesByConversation.value[resolvedConversation.conversation_id]) {
+    await loadHistory(resolvedConversation.conversation_id);
   } else {
     await scrollToBottom();
   }
   if (socketState.value === "connected") {
-    await syncConversation(conversation.conversation_id);
-    await acknowledgeLatest(conversation.conversation_id, "read");
+    await syncConversation(resolvedConversation.conversation_id);
+    await acknowledgeLatest(resolvedConversation.conversation_id, "read");
   }
 }
 
@@ -464,6 +496,12 @@ async function handleServerEvent(event: ServerEvent): Promise<void> {
   if (event.type === "message") {
     ensureConversationForMessage(event);
     updateConversationMessages(event.conversation_id, [fromMessageEvent(event)]);
+    const conversation = conversations.value.find(
+      (item) => item.conversation_id === event.conversation_id,
+    );
+    if (conversation) {
+      await hydrateConversation(conversation);
+    }
     await acknowledgeLatest(event.conversation_id, "delivered");
     if (activeConversationId.value === event.conversation_id) {
       await acknowledgeLatest(event.conversation_id, "read");
@@ -719,9 +757,9 @@ onBeforeUnmount(() => {
           type="button"
           @click="openConversation(conversation)"
         >
-          <span class="avatar">{{ avatarLabel(getPeerId(conversation)) }}</span>
+          <span class="avatar">{{ avatarLabel(getPeerUsername(conversation)) }}</span>
           <span class="conversation-copy">
-            <strong>{{ shortId(getPeerId(conversation)) }}</strong>
+            <strong>{{ getPeerUsername(conversation) }}</strong>
             <span>
               {{
                 messagesByConversation[conversation.conversation_id]?.at(-1)?.content ??
@@ -761,17 +799,17 @@ onBeforeUnmount(() => {
       <template v-if="activeConversation">
         <header class="chat-header">
           <div class="chat-person">
-            <span class="avatar large">{{ avatarLabel(getPeerId(activeConversation)) }}</span>
+            <span class="avatar large">{{ avatarLabel(getPeerUsername(activeConversation)) }}</span>
             <div>
-              <strong>{{ shortId(getPeerId(activeConversation)) }}</strong>
+              <strong>{{ getPeerUsername(activeConversation) }}</strong>
               <span class="connection-state" :class="socketState">
                 <i></i>{{ connectionLabel }}
               </span>
             </div>
           </div>
           <div class="conversation-meta">
-            <span>会话</span>
-            <code>{{ shortId(activeConversation.conversation_id) }}</code>
+            <span>会话成员</span>
+            <code>{{ getPeerUsername(activeConversation) }}</code>
           </div>
         </header>
 
