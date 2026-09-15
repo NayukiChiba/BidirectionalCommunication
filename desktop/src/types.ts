@@ -18,8 +18,14 @@ export interface AccessToken {
 export interface Conversation {
   conversation_id: string;
   member_ids: string[];
+  members?: ConversationMember[];
   created_at: string;
   created: boolean;
+}
+
+export interface ConversationMember {
+  user_id: string;
+  username: string;
 }
 
 export interface HistoryMessage {
