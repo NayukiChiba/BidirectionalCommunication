@@ -1136,8 +1136,8 @@ button:disabled {
 .toast {
   position: fixed;
   z-index: 30;
+  top: 24px;
   right: 26px;
-  bottom: 24px;
   max-width: 360px;
   padding: 12px 16px;
   border: 1px solid rgba(255, 255, 255, 0.1);
