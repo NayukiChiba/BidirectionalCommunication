@@ -1,11 +1,13 @@
 {
   "name": "bidirectional-communication-desktop",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
+    "backend:build": "uv run --project .. python buildBackend.py",
+    "backend:test": "uv run --project .. python smokeBackend.py",
     "test": "vitest run",
     "tauri": "tauri"
   },
