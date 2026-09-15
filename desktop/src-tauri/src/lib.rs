@@ -60,8 +60,15 @@ struct AccessToken {
 struct Conversation {
     conversation_id: String,
     member_ids: Vec<String>,
+    members: Vec<ConversationMember>,
     created_at: String,
     created: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct ConversationMember {
+    user_id: String,
+    username: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
