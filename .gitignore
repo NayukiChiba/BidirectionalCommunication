@@ -300,8 +300,10 @@ vite.svg
 
 # Rust
 target/
+desktop/src-tauri/gen/schemas/
 # 如后续仓库需要提交 Rust 应用锁文件，可移除此规则
 Cargo.lock
+!desktop/src-tauri/Cargo.lock
 **/*.rs.bk
 
 # Go
