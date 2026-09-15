@@ -29,6 +29,7 @@ const username = ref("");
 const password = ref("");
 const authBusy = ref(false);
 const authError = ref("");
+const backendStarting = ref(true);
 
 const accessToken = ref("");
 const tokenExpiresAt = ref("");
@@ -604,6 +605,19 @@ onMounted(async () => {
       void handleSocketStatus(event.payload);
     }),
   );
+  unlistenCallbacks.push(
+    await listen<string>("embedded-backend-error", (event) => {
+      socketReason.value = event.payload;
+      showNotice(event.payload);
+    }),
+  );
+  try {
+    serverUrl.value = await desktopBridge.getEmbeddedServer();
+  } catch (error) {
+    authError.value = normalizeCommandError(error).message;
+  } finally {
+    backendStarting.value = false;
+  }
 });
 
 onBeforeUnmount(() => {
@@ -707,9 +721,21 @@ onBeforeUnmount(() => {
             />
           </label>
           <p v-if="authError" class="form-error" role="alert">{{ authError }}</p>
-          <button class="primary-button" type="submit" :disabled="authBusy">
-            <span v-if="authBusy" class="button-loader" aria-hidden="true"></span>
-            {{ authBusy ? "正在连接" : authMode === "login" ? "进入对话" : "注册并进入" }}
+          <button
+            class="primary-button"
+            type="submit"
+            :disabled="authBusy || backendStarting"
+          >
+            <span v-if="authBusy || backendStarting" class="button-loader" aria-hidden="true"></span>
+            {{
+              backendStarting
+                ? "正在启动本地服务"
+                : authBusy
+                  ? "正在连接"
+                  : authMode === "login"
+                    ? "进入对话"
+                    : "注册并进入"
+            }}
           </button>
         </form>
 

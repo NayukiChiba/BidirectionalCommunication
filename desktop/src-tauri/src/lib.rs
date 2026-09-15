@@ -1,3 +1,6 @@
+use std::ffi::OsString;
+use std::net::TcpListener;
+use std::sync::Mutex as StandardMutex;
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
@@ -6,12 +9,18 @@ use reqwest::{Client, Response, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_shell::process::{CommandChild, CommandEvent};
+use tauri_plugin_shell::ShellExt;
 use tokio::sync::{mpsc, Mutex};
 use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message};
 use url::Url;
 
 const REQUEST_TIMEOUT_SECONDS: u64 = 15;
+const EMBEDDED_BACKEND_START_ATTEMPTS: usize = 600;
+const EMBEDDED_BACKEND_RETRY_MILLISECONDS: u64 = 100;
+const STANDALONE_APP_IDENTIFIER: &str = "com.nayukichiba.bidirectionalcommunication";
+const EXTERNAL_SERVER_URL: &str = "http://127.0.0.1:8000";
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -105,6 +114,19 @@ struct WebSocketSession {
 struct AppState {
     client: Client,
     web_socket: Mutex<Option<WebSocketSession>>,
+}
+
+#[derive(Default)]
+struct EmbeddedBackendSession {
+    base_url: Option<String>,
+    child: Option<CommandChild>,
+    startup_error: Option<String>,
+    manages_backend: bool,
+}
+
+#[derive(Default)]
+struct EmbeddedBackendState {
+    session: StandardMutex<EmbeddedBackendSession>,
 }
 
 impl AppState {
@@ -226,6 +248,49 @@ async fn check_server(base_url: String, state: State<'_, AppState>) -> Result<()
             response.status(),
         ))
     }
+}
+
+#[tauri::command]
+async fn get_embedded_server(
+    backend_state: State<'_, EmbeddedBackendState>,
+    app_state: State<'_, AppState>,
+) -> Result<String, CommandError> {
+    let (base_url, manages_backend) = {
+        let session = backend_state
+            .session
+            .lock()
+            .map_err(|_| CommandError::new("backend_error", "内置服务状态读取失败"))?;
+        if let Some(error) = &session.startup_error {
+            return Err(CommandError::new("backend_error", error.clone()));
+        }
+        (
+            session.base_url.clone().ok_or_else(|| {
+                CommandError::new("backend_error", "服务地址尚未完成初始化")
+            })?,
+            session.manages_backend,
+        )
+    };
+
+    if !manages_backend {
+        return Ok(base_url);
+    }
+
+    let health_url = endpoint_url(&base_url, "/health/ready")?;
+    for _ in 0..EMBEDDED_BACKEND_START_ATTEMPTS {
+        if let Ok(response) = app_state.client.get(health_url.clone()).send().await {
+            if response.status().is_success() {
+                return Ok(base_url);
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(
+            EMBEDDED_BACKEND_RETRY_MILLISECONDS,
+        ))
+        .await;
+    }
+    Err(CommandError::new(
+        "backend_start_timeout",
+        "内置服务启动超时，请重新启动客户端",
+    ))
 }
 
 #[tauri::command]
@@ -491,9 +556,29 @@ async fn disconnect_websocket(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let application = tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
         .manage(AppState::new())
+        .manage(EmbeddedBackendState::default())
+        .setup(|app| {
+            if app.config().identifier == STANDALONE_APP_IDENTIFIER {
+                if let Err(error) = start_embedded_backend(app.handle()) {
+                    let state = app.state::<EmbeddedBackendState>();
+                    if let Ok(mut session) = state.session.lock() {
+                        session.startup_error = Some(error.message);
+                    };
+                }
+            } else {
+                let state = app.state::<EmbeddedBackendState>();
+                if let Ok(mut session) = state.session.lock() {
+                    session.base_url = Some(EXTERNAL_SERVER_URL.to_string());
+                    session.manages_backend = false;
+                };
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
+            get_embedded_server,
             check_server,
             register_user,
             login,
@@ -504,13 +589,98 @@ pub fn run() {
             send_websocket_command,
             disconnect_websocket,
         ])
-        .run(tauri::generate_context!())
-        .expect("启动 Tauri 桌面客户端失败");
+        .build(tauri::generate_context!())
+        .expect("构建 Tauri 桌面客户端失败");
+    application.run(|app, event| {
+        if matches!(event, tauri::RunEvent::Exit) {
+            stop_embedded_backend(app);
+        }
+    });
+}
+
+fn start_embedded_backend(app: &AppHandle) -> Result<(), CommandError> {
+    let port = reserve_loopback_port()?;
+    let data_directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| CommandError::new("backend_error", "无法定位应用数据目录"))?
+        .join("backend");
+    std::fs::create_dir_all(&data_directory)
+        .map_err(|_| CommandError::new("backend_error", "无法创建应用数据目录"))?;
+    let arguments = vec![
+        OsString::from("--host"),
+        OsString::from("127.0.0.1"),
+        OsString::from("--port"),
+        OsString::from(port.to_string()),
+        OsString::from("--data-dir"),
+        data_directory.into_os_string(),
+        OsString::from("--parent-pid"),
+        OsString::from(std::process::id().to_string()),
+    ];
+    let (mut events, child) = app
+        .shell()
+        .sidecar("bidirectional-backend")
+        .map_err(|error| {
+            CommandError::new("backend_error", format!("无法加载内置服务：{error}"))
+        })?
+        .args(arguments)
+        .spawn()
+        .map_err(|error| {
+            CommandError::new("backend_error", format!("无法启动内置服务：{error}"))
+        })?;
+    let base_url = format!("http://127.0.0.1:{port}");
+    {
+        let state = app.state::<EmbeddedBackendState>();
+        let mut session = state
+            .session
+            .lock()
+            .map_err(|_| CommandError::new("backend_error", "内置服务状态写入失败"))?;
+        session.base_url = Some(base_url);
+        session.child = Some(child);
+        session.startup_error = None;
+        session.manages_backend = true;
+    }
+
+    let event_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(event) = events.recv().await {
+            if let CommandEvent::Terminated(payload) = event {
+                let reason = format!("内置服务已退出，退出码：{:?}", payload.code);
+                let state = event_app.state::<EmbeddedBackendState>();
+                if let Ok(mut session) = state.session.lock() {
+                    session.startup_error = Some(reason.clone());
+                }
+                let _ = event_app.emit("embedded-backend-error", reason);
+                break;
+            }
+        }
+    });
+    Ok(())
+}
+
+fn stop_embedded_backend(app: &AppHandle) {
+    let state = app.state::<EmbeddedBackendState>();
+    if let Ok(mut session) = state.session.lock() {
+        if let Some(child) = session.child.take() {
+            let _ = child.kill();
+        }
+    };
+}
+
+fn reserve_loopback_port() -> Result<u16, CommandError> {
+    let listener = TcpListener::bind(("127.0.0.1", 0))
+        .map_err(|_| CommandError::new("backend_error", "无法分配本地服务端口"))?;
+    listener
+        .local_addr()
+        .map(|address| address.port())
+        .map_err(|_| CommandError::new("backend_error", "无法读取本地服务端口"))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_api_error, normalize_base_url, websocket_url};
+    use super::{
+        extract_api_error, normalize_base_url, reserve_loopback_port, websocket_url,
+    };
 
     #[test]
     fn normalizes_http_base_url() {
@@ -532,5 +702,11 @@ mod tests {
         );
         assert_eq!(code, "conversation_unavailable");
         assert_eq!(message, "无法访问");
+    }
+
+    #[test]
+    fn reserves_available_loopback_port() {
+        let port = reserve_loopback_port().unwrap();
+        assert!(port > 0);
     }
 }

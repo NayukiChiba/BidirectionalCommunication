@@ -26,6 +26,10 @@ export function normalizeCommandError(error: unknown): CommandError {
 }
 
 export const desktopBridge = {
+  getEmbeddedServer(): Promise<string> {
+    return invoke("get_embedded_server");
+  },
+
   checkServer(baseUrl: string): Promise<void> {
     return invoke("check_server", { baseUrl });
   },
