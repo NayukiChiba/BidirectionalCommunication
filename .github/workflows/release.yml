@@ -28,11 +28,16 @@ jobs:
           $tauriVersion = (Get-Content desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
           $cargoMatch = Select-String -Path desktop/src-tauri/Cargo.toml -Pattern '^version = "([^"]+)"$'
           $cargoVersion = $cargoMatch.Matches[0].Groups[1].Value
-          $tagVersion = $env:RELEASE_TAG.TrimStart("v")
-          if ($tagVersion -ne $packageVersion -or
-              $tagVersion -ne $tauriVersion -or
-              $tagVersion -ne $cargoVersion) {
-            Write-Error "标签版本 $tagVersion 与桌面应用版本不一致"
+          $releaseVersion = $env:RELEASE_TAG.TrimStart("v")
+          $semanticVersion = if ($releaseVersion -match '^\d+\.\d+$') {
+            "$releaseVersion.0"
+          } else {
+            $releaseVersion
+          }
+          if ($semanticVersion -ne $packageVersion -or
+              $semanticVersion -ne $tauriVersion -or
+              $semanticVersion -ne $cargoVersion) {
+            Write-Error "标签版本 $releaseVersion 与桌面应用版本不一致"
             exit 1
           }
 
@@ -42,6 +47,15 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: desktop/package-lock.json
+
+      - name: 配置 uv 和 Python
+        uses: astral-sh/setup-uv@v9
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: 安装后端构建依赖
+        run: uv sync --locked --dev
 
       - name: 配置 Rust
         shell: pwsh
@@ -64,13 +78,33 @@ jobs:
         working-directory: desktop
         run: npm ci
 
+      - name: 清理缓存中的旧安装程序
+        shell: pwsh
+        run: |
+          $bundlePath = Join-Path $env:GITHUB_WORKSPACE "desktop/src-tauri/target/release/bundle"
+          if (Test-Path -LiteralPath $bundlePath) {
+            Remove-Item -LiteralPath $bundlePath -Recurse -Force
+          }
+
       - name: 运行前端测试
         working-directory: desktop
         run: npm test
 
-      - name: 构建 NSIS 安装程序
+      - name: 构建纯客户端 NSIS 安装程序
         working-directory: desktop
-        run: npm run tauri build -- --bundles nsis
+        run: npm run tauri:build:client
+
+      - name: 构建内置后端 NSIS 安装程序
+        working-directory: desktop
+        run: npm run tauri:build:standalone
+
+      - name: 使用发布版本重命名安装程序
+        working-directory: desktop
+        run: npm run release:rename
+
+      - name: 验证内置后端
+        working-directory: desktop
+        run: npm run backend:test
 
       - name: 上传 Windows 安装程序
         uses: actions/upload-artifact@v4
