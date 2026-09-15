@@ -2,18 +2,36 @@
 
 一个基于 Python 和 FastAPI 构建的双向通信学习项目。
 
-## 安装与启动
+## 开箱即用启动
+
+只需要 Python 3.11 或更高版本，不需要 Docker、PostgreSQL 或 Redis：
+
+```powershell
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install .
+.venv\Scripts\python.exe main.py
+```
+
+也可以使用 uv：
 
 ```bash
 uv sync --dev
+uv run python main.py
+```
+
+`python main.py` 固定使用单机模式：自动生成认证密钥、自动迁移
+`data/chat.sqlite3`，默认监听 `127.0.0.1:8000`，并且不连接 Redis。可以通过环境变量
+`APP_HOST` 和 `APP_PORT` 修改监听地址。FastAPI 应用仍由 `bootstrap.create_app()` 完成
+组装。
+
+如需使用外部 PostgreSQL 或可选 Redis，复制并编辑 `.env.example`，执行显式迁移后用
+Uvicorn 启动：
+
+```powershell
 Copy-Item .env.example .env
-# 编辑 .env，设置随机密钥，并同步 DATABASE_URL 中的 PostgreSQL 密码
-docker compose up -d postgres --wait
 uv run alembic upgrade head
 uv run uvicorn main:app --reload --ws-max-size 16384
 ```
-
-`main.py` 是唯一程序启动入口，FastAPI 应用由 `bootstrap.create_app()` 完成组装。
 
 运行检查：
 
@@ -33,13 +51,17 @@ npm run dev
 
 ## 桌面客户端
 
-`desktop/` 提供使用 Rust、Tauri 2 和 Vue 3 构建的桌面聊天客户端。客户端通过 Rust
-层访问 HTTP API，并在 WebSocket 握手时附带 Bearer 令牌，支持注册登录、创建单聊、
-历史消息、实时收发、累计送达/已读位置和断线重连。
+`desktop/` 提供使用 Rust、Tauri 2 和 Vue 3 构建的桌面聊天客户端。每个 Release 同时
+提供两个版本：
 
-先按上文启动后端，再启动桌面开发环境：
+- `双向通信_0.5_x64-setup.exe`：内置由 PyInstaller 打包的 FastAPI sidecar 和
+  SQLite，最终用户不需要安装 Python、Docker、PostgreSQL 或 Redis。
+- `双向通信客户端_0.5_x64-setup.exe`：不包含后端，适合连接团队部署的远程服务。
+
+桌面开发环境需要先准备 Python 和 Node.js 依赖：
 
 ```bash
+uv sync --dev
 cd desktop
 npm install
 npm run tauri dev
@@ -51,19 +73,22 @@ npm run tauri dev
 cd desktop
 npm test
 npm run build
+npm run backend:test
 cd src-tauri
 cargo test
 ```
 
-生成当前平台的桌面安装包：
+分别生成纯客户端和内置后端安装包：
 
 ```bash
 cd desktop
-npm run tauri build
+npm run tauri:build:client
+npm run tauri:build:standalone
+npm run release:rename
 ```
 
-首次登录页默认连接 `http://127.0.0.1:8000`，也可以填写其他 HTTP 或 HTTPS 后端
-地址。访问令牌只保存在进程内存中，不写入浏览器持久化存储。
+客户端默认连接自动选择端口的内置服务，也可以填写其他 HTTP 或 HTTPS 后端地址。
+访问令牌只保存在进程内存中，不写入浏览器持久化存储。
 
 ## Docker 启动
 
@@ -168,7 +193,7 @@ main → bootstrap → entrypoints / adapters → application → domain
 - 已支持短期 Bearer JWT 身份认证和一对一会话成员授权。
 - 进程退出后在线状态会丢失，消息保存在配置的 PostgreSQL 或 SQLite 数据库。
 - PostgreSQL 运行时使用 asyncpg，Alembic 使用同步 Psycopg；SQLite 保留 aiosqlite。
-- 应用不会自动迁移数据库，部署或拉取新版本后需要执行 `alembic upgrade head`。
+- 单机和桌面内置模式自动迁移 SQLite；外部部署仍需显式执行 `alembic upgrade head`。
 - 离线消息由客户端在 WebSocket 重连后主动提交位置并分批同步。
 - 送达和已读位置按用户累计保存，尚不区分同一用户的多个设备。
 - `accepted` 只表示服务端已持久化，`pushed` 也不表示用户已经阅读。

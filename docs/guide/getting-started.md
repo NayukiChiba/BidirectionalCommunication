@@ -3,31 +3,25 @@
 ## 环境要求
 
 - Python 3.11 或更高版本
-- [uv](https://docs.astral.sh/uv/)
+- [uv](https://docs.astral.sh/uv/)（推荐，但不是运行必需）
 - Node.js 22 或更高版本（仅用于文档站）
 
-## 安装 Python 依赖
+## 最小单机启动
 
-在项目根目录执行：
+只安装 Python 依赖并直接运行 `main.py`：
+
+```powershell
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install .
+.venv\Scripts\python.exe main.py
+```
+
+该模式自动生成认证密钥、迁移 `data/chat.sqlite3`，且不连接 PostgreSQL 或 Redis。
+使用 uv 时等价命令为：
 
 ```bash
 uv sync --dev
-Copy-Item .env.example .env
-python -c "import secrets; print(secrets.token_hex(32))"
-```
-
-将生成的随机值分别写入 `.env` 的 `AUTH_SECRET_KEY` 和 `POSTGRES_PASSWORD`，同步修改
-`DATABASE_URL` 中的密码，然后启动开发 PostgreSQL 并升级数据库：
-
-```bash
-docker compose up -d postgres --wait
-uv run alembic upgrade head
-```
-
-## 启动服务
-
-```bash
-uv run uvicorn main:app --reload
+uv run python main.py
 ```
 
 默认服务地址：
@@ -35,6 +29,19 @@ uv run uvicorn main:app --reload
 - HTTP：`http://127.0.0.1:8000`
 - 健康检查：`http://127.0.0.1:8000/health`
 - WebSocket：`ws://127.0.0.1:8000/ws`（握手需要 Bearer 令牌）
+
+如需修改监听地址，可以设置 `APP_HOST` 和 `APP_PORT` 环境变量。
+
+## 外部数据库与 Redis
+
+PostgreSQL 和 Redis 都是可选扩展。复制 `.env.example`、设置认证密钥和所需连接 URL，
+再显式迁移并启动 ASGI 应用：
+
+```powershell
+Copy-Item .env.example .env
+uv run alembic upgrade head
+uv run uvicorn main:app --reload
+```
 
 访问健康检查接口，预期响应为：
 
@@ -44,8 +51,8 @@ uv run uvicorn main:app --reload
 }
 ```
 
-如果只想运行轻量 SQLite 本地实验，可以从 `.env` 删除 `DATABASE_URL`；应用会回退到
-`data/chat.sqlite3`。PostgreSQL 是 Compose 和跨数据库集成测试的主开发后端。
+删除 `DATABASE_URL` 时使用 SQLite，删除 `REDIS_URL` 时使用单进程内存实时路由。
+`python main.py` 始终选择这两个本地默认值。
 
 ## 运行质量检查
 
