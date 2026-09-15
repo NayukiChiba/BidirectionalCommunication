@@ -3,6 +3,7 @@
 import asyncio
 import logging
 
+from asyncpg.exceptions import PostgresConnectionError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -32,7 +33,13 @@ class DatabaseReadinessProbe:
                     revision = await connection.scalar(
                         text("SELECT version_num FROM alembic_version")
                     )
-        except (TimeoutError, SQLAlchemyError):
-            logger.warning("database_readiness_failed", extra={"event": "readiness"})
+        except (TimeoutError, SQLAlchemyError, PostgresConnectionError):
+            logger.warning(
+                "database_readiness_failed",
+                extra={
+                    "event": "readiness",
+                    "status": "database_unavailable",
+                },
+            )
             return False
         return revision == self._expectedRevision
