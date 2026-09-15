@@ -11,9 +11,13 @@
 
 ## 发布版本
 
-- 完整版 `双向通信_0.5_x64-setup.exe`：自带 FastAPI 和 SQLite，开箱即用。
-- 纯客户端版 `双向通信客户端_0.5_x64-setup.exe`：不包含后端，连接本机 8000
-  端口或用户填写的远程服务。
+- 完整版 `BidirectionalCommunication_0.5_x64-setup.exe`：自带 FastAPI 和 SQLite，
+  开箱即用。
+- 纯客户端版 `BidirectionalCommunicationClient_0.5_x64-setup.exe`：不包含后端，
+  连接本机 8000 端口或用户填写的远程服务。
+
+安装包文件名使用 ASCII，因为 GitHub 会剥离 Release 资产名中的非字母数字字符，
+中文名会导致两个安装包重名冲突。
 
 Cargo、npm 和 Tauri 内部遵循 SemVer，使用 `0.5.0`；对外 Tag、Release 和安装包名称
 使用 `0.5`。

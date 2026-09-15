@@ -54,9 +54,11 @@ npm run dev
 `desktop/` 提供使用 Rust、Tauri 2 和 Vue 3 构建的桌面聊天客户端。每个 Release 同时
 提供两个版本：
 
-- `双向通信_0.5_x64-setup.exe`：内置由 PyInstaller 打包的 FastAPI sidecar 和
-  SQLite，最终用户不需要安装 Python、Docker、PostgreSQL 或 Redis。
-- `双向通信客户端_0.5_x64-setup.exe`：不包含后端，适合连接团队部署的远程服务。
+- `BidirectionalCommunication_0.5_x64-setup.exe`：内置由 PyInstaller 打包的
+  FastAPI sidecar 和 SQLite，最终用户不需要安装 Python、Docker、PostgreSQL
+  或 Redis。
+- `BidirectionalCommunicationClient_0.5_x64-setup.exe`：不包含后端，适合连接团队
+  部署的远程服务。
 
 桌面开发环境需要先准备 Python 和 Node.js 依赖：
 

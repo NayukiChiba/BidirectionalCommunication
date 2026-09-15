@@ -134,18 +134,33 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           changelog_path="changelogs/${GITHUB_REF_NAME}.md"
+          notes_args=("--generate-notes")
           if [[ -f "${changelog_path}" ]]; then
-            gh release create "${GITHUB_REF_NAME}" release-assets/*.exe \
+            notes_args=("--notes-file" "${changelog_path}")
+          fi
+
+          # 若 Release 已存在（如重跑失败任务），跳过创建直接上传
+          if ! gh release view "${GITHUB_REF_NAME}" \
+              --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release create "${GITHUB_REF_NAME}" \
               --repo "${GITHUB_REPOSITORY}" \
               --title "BidirectionalCommunication ${GITHUB_REF_NAME}" \
-              --notes-file "${changelog_path}" \
-              --verify-tag \
-              --latest
-          else
-            gh release create "${GITHUB_REF_NAME}" release-assets/*.exe \
-              --repo "${GITHUB_REPOSITORY}" \
-              --title "BidirectionalCommunication ${GITHUB_REF_NAME}" \
-              --generate-notes \
+              "${notes_args[@]}" \
               --verify-tag \
               --latest
           fi
+
+          # 资产上传必须与创建分开：gh release create 带文件时是全有或全无，
+          # 任一资产失败会回滚删除 Release，导致后续上传全部 404。
+          # --clobber 保证同一 Tag 重跑时可重复执行。
+          for attempt in 1 2 3; do
+            if gh release upload "${GITHUB_REF_NAME}" release-assets/*.exe \
+                --repo "${GITHUB_REPOSITORY}" --clobber; then
+              echo "上传完成（第 ${attempt} 次尝试）"
+              exit 0
+            fi
+            echo "上传失败，15 秒后重试（${attempt}/3）"
+            sleep 15
+          done
+          echo "上传资产失败，已重试 3 次"
+          exit 1

@@ -750,7 +750,7 @@ onBeforeUnmount(() => {
         <div class="compact-brand">
           <div class="brand-mark small" aria-hidden="true"><span></span><span></span></div>
           <div>
-            <strong>双向通信</strong>
+            <strong>BidirectionalCommunication</strong>
             <span>Desktop</span>
           </div>
         </div>
