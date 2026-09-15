@@ -41,8 +41,16 @@ class ConversationResponse(BaseModel):
 
     conversation_id: UUID
     member_ids: list[str]
+    members: list["ConversationMemberResponse"]
     created_at: datetime
     created: bool
+
+
+class ConversationMemberResponse(BaseModel):
+    """会话成员的公开身份。"""
+
+    user_id: str
+    username: str
 
 
 def createConversationRouter(
@@ -91,6 +99,10 @@ def createConversationRouter(
         return ConversationResponse(
             conversation_id=conversation.conversation_id.value,
             member_ids=sorted(str(member) for member in conversation.members),
+            members=[
+                ConversationMemberResponse(user_id=userId, username=username)
+                for userId, username in result.member_usernames
+            ],
             created_at=conversation.created_at,
             created=result.created,
         )

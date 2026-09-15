@@ -38,11 +38,15 @@ class CreateConversationService:
         except DomainError as error:
             raise InvalidConversationRequest("会话必须包含两名不同用户") from error
 
-        await self._requireUsersExist(currentUserId, peerId)
+        memberUsernames = await self._getMemberUsernames(currentUserId, peerId)
 
         existingConversation = await self._getByMembers(currentUserId, peerId)
         if existingConversation is not None:
-            return CreateConversationResult(existingConversation, created=False)
+            return CreateConversationResult(
+                existingConversation,
+                created=False,
+                member_usernames=memberUsernames,
+            )
 
         async with self._conversationUnitOfWorkFactory() as unitOfWork:
             await unitOfWork.conversations.add(conversation)
@@ -52,8 +56,13 @@ class CreateConversationService:
                 return await self._recoverConcurrentConversation(
                     currentUserId,
                     peerId,
+                    memberUsernames,
                 )
-        return CreateConversationResult(conversation, created=True)
+        return CreateConversationResult(
+            conversation,
+            created=True,
+            member_usernames=memberUsernames,
+        )
 
     async def _getByMembers(
         self,
@@ -67,22 +76,31 @@ class CreateConversationService:
                 secondMemberId,
             )
 
-    async def _requireUsersExist(
+    async def _getMemberUsernames(
         self,
         currentUserId: UserId,
         peerId: UserId,
-    ) -> None:
-        """拒绝为不存在的用户创建成员关系。"""
+    ) -> tuple[tuple[str, str], ...]:
+        """验证成员存在并返回不包含认证凭据的用户名快照。"""
         async with self._userUnitOfWorkFactory() as unitOfWork:
             currentUser = await unitOfWork.users.getById(currentUserId)
             peer = await unitOfWork.users.getById(peerId)
         if currentUser is None or peer is None:
             raise ConversationUnavailable("无法创建或访问该会话")
+        return tuple(
+            sorted(
+                (
+                    (str(currentUser.user_id), str(currentUser.username)),
+                    (str(peer.user_id), str(peer.username)),
+                )
+            )
+        )
 
     async def _recoverConcurrentConversation(
         self,
         firstMemberId: UserId,
         secondMemberId: UserId,
+        memberUsernames: tuple[tuple[str, str], ...],
     ) -> CreateConversationResult:
         """唯一约束竞态后用新事务读取胜出的会话。"""
         async with self._conversationUnitOfWorkFactory() as unitOfWork:
@@ -92,4 +110,8 @@ class CreateConversationService:
             )
         if conversation is None:
             raise ConversationStorageConflictError("会话并发创建恢复失败")
-        return CreateConversationResult(conversation, created=False)
+        return CreateConversationResult(
+            conversation,
+            created=False,
+            member_usernames=memberUsernames,
+        )

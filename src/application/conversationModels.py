@@ -19,3 +19,4 @@ class CreateConversationResult:
 
     conversation: Conversation
     created: bool
+    member_usernames: tuple[tuple[str, str], ...]

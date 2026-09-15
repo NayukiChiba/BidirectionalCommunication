@@ -62,6 +62,13 @@ def test_create_or_get_returns_same_conversation_for_reversed_members(
     assert duplicate["created"] is False
     assert first["conversation_id"] == duplicate["conversation_id"]
     assert first["member_ids"] == sorted((userA.userId, userB.userId))
+    assert first["members"] == [
+        {"user_id": userId, "username": username}
+        for userId, username in sorted(
+            ((userA.userId, userA.username), (userB.userId, userB.username))
+        )
+    ]
+    assert duplicate["members"] == first["members"]
 
 
 def test_self_and_missing_member_conversations_are_rejected(
