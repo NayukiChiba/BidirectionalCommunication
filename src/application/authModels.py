@@ -5,7 +5,7 @@ from datetime import datetime
 
 from src.domain import UserId, Username
 
-MIN_PASSWORD_LENGTH = 12
+MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 128
 
 

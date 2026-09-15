@@ -165,7 +165,16 @@ async def test_register_rejects_invalid_password_and_duplicate_username() -> Non
     service, _ = createService(unitOfWorkFactory)
 
     with pytest.raises(InvalidRegistration):
-        await service.register(RegisterUserCommand(username="alice", password="short"))
+        await service.register(
+            RegisterUserCommand(username="alice", password="1234567")
+        )
+
+    eightCharacterCommand = RegisterUserCommand(
+        username="eight-char",
+        password="12345678",
+    )
+    identity = await service.register(eightCharacterCommand)
+    assert identity.username == Username("eight-char")
 
     command = RegisterUserCommand(
         username="Alice",
@@ -175,7 +184,7 @@ async def test_register_rejects_invalid_password_and_duplicate_username() -> Non
     with pytest.raises(UsernameAlreadyExists):
         await service.register(command)
 
-    assert len(unitOfWorkFactory.users) == 1
+    assert len(unitOfWorkFactory.users) == 2
 
 
 @pytest.mark.asyncio
