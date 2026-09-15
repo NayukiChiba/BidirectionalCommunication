@@ -1,6 +1,8 @@
 """FastAPI 应用的唯一组合根。"""
 
 import logging
+import os
+import secrets
 import socket
 from contextlib import asynccontextmanager
 from functools import partial
@@ -8,7 +10,10 @@ from pathlib import Path
 from typing import AsyncIterator
 from uuid import uuid4
 
+import uvicorn
+from alembic import command
 from fastapi import FastAPI
+from pydantic import ValidationError
 
 from src.adapters import (
     ConnectionManager,
@@ -24,6 +29,7 @@ from src.adapters.database import (
     createAsyncSessionFactory,
     createAsyncSqliteUrl,
 )
+from src.adapters.database.migrationConfig import createMigrationConfig
 from src.adapters.redis import RedisRealtimeGateway, createRedisClient
 from src.adapters.security import JwtAccessTokenProvider, PwdlibPasswordHasher
 from src.application import (
@@ -35,7 +41,9 @@ from src.application import (
     SyncMessagesService,
 )
 from src.config import (
+    DATA_DIR,
     DATABASE_HEAD_REVISION,
+    DEFAULT_DATABASE_URL,
     AuthSettings,
     DatabaseSettings,
     RedisSettings,
@@ -53,6 +61,9 @@ from src.entrypoints import (
 from src.observability import configureStructuredLogging
 
 logger = logging.getLogger(__name__)
+
+STANDALONE_DATABASE_FILENAME = "chat.sqlite3"
+STANDALONE_SECRET_FILENAME = "auth-secret"
 
 
 def create_app(
@@ -224,3 +235,88 @@ def create_app(
         )
     )
     return app
+
+
+def createStandaloneApp(
+    *,
+    dataDirectory: Path | None = None,
+    forceLocalServices: bool = False,
+) -> FastAPI:
+    """创建自动准备数据库和认证密钥的单机应用。"""
+    resolvedDataDirectory = (dataDirectory or DATA_DIR).expanduser().resolve()
+    resolvedDataDirectory.mkdir(parents=True, exist_ok=True)
+    authSettings = _createStandaloneAuthSettings(
+        resolvedDataDirectory,
+        forceLocalServices=forceLocalServices,
+    )
+    databaseSettings = (
+        DatabaseSettings(databaseUrl=DEFAULT_DATABASE_URL, _env_file=None)
+        if forceLocalServices
+        else DatabaseSettings()
+    )
+    configuredDatabaseUrl = databaseSettings.databaseUrl.get_secret_value()
+    useLocalSqlite = forceLocalServices or configuredDatabaseUrl == DEFAULT_DATABASE_URL
+    databaseTarget: Path | str = (
+        resolvedDataDirectory / STANDALONE_DATABASE_FILENAME
+        if useLocalSqlite
+        else configuredDatabaseUrl
+    )
+    command.upgrade(createMigrationConfig(databaseTarget), "head")
+    return create_app(
+        databasePath=databaseTarget if isinstance(databaseTarget, Path) else None,
+        authSettings=authSettings,
+        databaseSettings=databaseSettings,
+        redisSettings=(
+            RedisSettings(redisUrl=None, _env_file=None)
+            if forceLocalServices
+            else RedisSettings()
+        ),
+    )
+
+
+def runStandaloneApp(
+    app: FastAPI,
+    *,
+    host: str | None = None,
+    port: int | None = None,
+) -> None:
+    """直接运行已经完成本地准备的单机应用。"""
+    resolvedHost = host or os.getenv("APP_HOST", "127.0.0.1")
+    resolvedPort = port or int(os.getenv("APP_PORT", "8000"))
+    if not 1 <= resolvedPort <= 65_535:
+        raise ValueError("APP_PORT 必须在 1 到 65535 之间")
+    uvicorn.run(app, host=resolvedHost, port=resolvedPort, ws_max_size=16_384)
+
+
+def _createStandaloneAuthSettings(
+    dataDirectory: Path,
+    *,
+    forceLocalServices: bool,
+) -> AuthSettings:
+    """优先读取显式配置，否则创建单机专用随机密钥。"""
+    if not forceLocalServices:
+        try:
+            return AuthSettings()
+        except ValidationError as error:
+            errors = error.errors()
+            isOnlyMissingSecret = len(errors) == 1 and errors[0]["type"] == "missing"
+            if not isOnlyMissingSecret:
+                raise
+    secretPath = dataDirectory / STANDALONE_SECRET_FILENAME
+    secretValue = _loadOrCreateSecret(secretPath)
+    return AuthSettings(secretKey=secretValue, _env_file=None)
+
+
+def _loadOrCreateSecret(secretPath: Path) -> str:
+    """并发安全地读取或创建本机认证密钥。"""
+    if secretPath.exists():
+        return secretPath.read_text(encoding="utf-8").strip()
+    generatedSecret = secrets.token_hex(32)
+    try:
+        with secretPath.open("x", encoding="utf-8") as secretFile:
+            secretFile.write(generatedSecret)
+        if os.name != "nt":
+            secretPath.chmod(0o600)
+        return generatedSecret
+    except FileExistsError:
+        return secretPath.read_text(encoding="utf-8").strip()

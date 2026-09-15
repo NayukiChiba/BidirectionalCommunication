@@ -9,7 +9,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from bootstrap import create_app
+from bootstrap import (
+    STANDALONE_DATABASE_FILENAME,
+    STANDALONE_SECRET_FILENAME,
+    create_app,
+    createStandaloneApp,
+)
 from src.adapters.database.migrationConfig import (
     createMigrationConfig,
     createMigrationEngine,
@@ -63,6 +68,37 @@ def test_create_app_composes_dependencies_and_routes(tmp_path: Path) -> None:
             assert inspect(inspectionEngine).has_table("conversation_members")
         finally:
             inspectionEngine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_standalone_app_prepares_sqlite_without_external_services(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """单机模式应忽略外部服务配置并自动准备本地持久化。"""
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://unavailable:secret@127.0.0.1:1/chat",
+    )
+    monkeypatch.setenv("REDIS_URL", "redis://127.0.0.1:1/0")
+    dataDirectory = tmp_path / "standalone-data"
+
+    app = createStandaloneApp(
+        dataDirectory=dataDirectory,
+        forceLocalServices=True,
+    )
+    databasePath = dataDirectory / STANDALONE_DATABASE_FILENAME
+    secretPath = dataDirectory / STANDALONE_SECRET_FILENAME
+    inspectionEngine = createMigrationEngine(databasePath)
+    try:
+        tables = set(inspect(inspectionEngine).get_table_names())
+        assert {"users", "conversations", "messages"} <= tables
+        assert len(secretPath.read_text(encoding="utf-8")) == 64
+        assert app.state.database_engine.url.database == str(databasePath)
+        assert app.state.redis_settings.enabled is False
+    finally:
+        inspectionEngine.dispose()
+        await app.state.database_engine.dispose()
 
 
 def test_app_startup_does_not_create_database_schema(tmp_path: Path) -> None:
