@@ -36,6 +36,20 @@ Windows NSIS 安装包生成在：
 src-tauri/target/release/bundle/nsis/
 ```
 
+## 发布
+
+推送 `v*` 格式的 Tag 后，GitHub Actions 会在 Windows Runner 上运行前端测试、构建
+NSIS 安装程序，并在构建成功后创建 GitHub Release 和上传 EXE：
+
+```bash
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+Tag 版本必须与 `package.json`、`src-tauri/Cargo.toml` 和
+`src-tauri/tauri.conf.json` 中的版本一致。如果存在 `changelogs/<tag>.md`，Release
+使用该文件作为说明；否则由 GitHub 自动生成发布说明。
+
 ## 安全边界
 
 - 密码仅用于当前登录或注册请求。
